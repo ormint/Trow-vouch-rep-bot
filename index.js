@@ -6,17 +6,20 @@ const {
   REST,
   Routes,
   SlashCommandBuilder,
-  Collection,
   EmbedBuilder
 } = require("discord.js");
 
-const client = new Client({
-  intents: [GatewayIntentBits.Guilds]
-});
+const Database = require("better-sqlite3");
+const db = new Database("database.db");
 
-const vouches = new Collection();
-const reports = new Collection();
-const fakeReports = new Collection();
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildMembers
+  ]
+});
 
 const images = {
   vouch: "https://media.discordapp.net/attachments/1468414813536518196/1479946564028993687/content.png?ex=69ade324&is=69ac91a4&hm=0080fcd78d34ca9a1623c261bf494f0aff918617b24da88fb694069e3ca98a2a&=&format=webp&quality=lossless&width=1440&height=960",
@@ -25,65 +28,90 @@ const images = {
   rep: "https://media.discordapp.net/attachments/1468414813536518196/1479946596136259665/content.png?ex=69ade32c&is=69ac91ac&hm=004808584395fb7909404625060268695ead7fcb4df303bd779c9fce9e2b7876&=&format=webp&quality=lossless&width=1440&height=960"
 };
 
+db.prepare(`
+CREATE TABLE IF NOT EXISTS users (
+  userId TEXT PRIMARY KEY,
+  vouches INTEGER DEFAULT 0,
+  reports INTEGER DEFAULT 0,
+  fakeReports INTEGER DEFAULT 0,
+  messages INTEGER DEFAULT 0
+)
+`).run();
+
+function getUser(id) {
+
+  let user = db.prepare("SELECT * FROM users WHERE userId = ?").get(id);
+
+  if (!user) {
+
+    db.prepare(`
+    INSERT INTO users (userId)
+    VALUES (?)
+    `).run(id);
+
+    user = db.prepare("SELECT * FROM users WHERE userId = ?").get(id);
+
+  }
+
+  return user;
+}
+
 const commands = [
+
   new SlashCommandBuilder()
     .setName("vouch")
     .setDescription("Give a vouch")
-    .addUserOption(option =>
-      option.setName("user").setDescription("User").setRequired(true)
-    ),
+    .addUserOption(o => o.setName("user").setDescription("User").setRequired(true)),
 
   new SlashCommandBuilder()
     .setName("rep")
     .setDescription("Check reputation")
-    .addUserOption(option =>
-      option.setName("user").setDescription("User").setRequired(true)
-    ),
+    .addUserOption(o => o.setName("user").setDescription("User").setRequired(true)),
 
   new SlashCommandBuilder()
     .setName("report")
-    .setDescription("Report a scammer")
-    .addUserOption(option =>
-      option.setName("user").setDescription("User").setRequired(true)
-    ),
+    .setDescription("Report scammer")
+    .addUserOption(o => o.setName("user").setDescription("User").setRequired(true)),
 
   new SlashCommandBuilder()
     .setName("fakevouch")
     .setDescription("Report fake vouch")
-    .addUserOption(option =>
-      option.setName("user").setDescription("User").setRequired(true)
-    ),
+    .addUserOption(o => o.setName("user").setDescription("User").setRequired(true)),
 
   new SlashCommandBuilder()
     .setName("info")
     .setDescription("User info")
-    .addUserOption(option =>
-      option.setName("user").setDescription("User").setRequired(true)
-    )
+    .addUserOption(o => o.setName("user").setDescription("User").setRequired(true))
 
-].map(cmd => cmd.toJSON());
+].map(c => c.toJSON());
 
 const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
 
 (async () => {
-  try {
 
-    console.log("Loading commands...");
+  await rest.put(
+    Routes.applicationCommands(process.env.CLIENT_ID),
+    { body: commands }
+  );
 
-    await rest.put(
-      Routes.applicationCommands(process.env.CLIENT_ID),
-      { body: commands }
-    );
-
-    console.log("Commands loaded.");
-
-  } catch (error) {
-    console.error(error);
-  }
 })();
 
 client.once("ready", () => {
   console.log(`Bot ready: ${client.user.tag}`);
+});
+
+client.on("messageCreate", message => {
+
+  if (message.author.bot) return;
+
+  getUser(message.author.id);
+
+  db.prepare(`
+  UPDATE users
+  SET messages = messages + 1
+  WHERE userId = ?
+  `).run(message.author.id);
+
 });
 
 client.on("interactionCreate", async interaction => {
@@ -92,27 +120,27 @@ client.on("interactionCreate", async interaction => {
 
   const user = interaction.options.getUser("user");
 
+  getUser(user.id);
+
   if (interaction.commandName === "vouch") {
 
     if (user.id === interaction.user.id) {
       return interaction.reply({ content: "❌ You cannot vouch yourself.", ephemeral: true });
     }
 
-    const key = `${interaction.user.id}-${user.id}`;
+    db.prepare(`
+    UPDATE users
+    SET vouches = vouches + 1
+    WHERE userId = ?
+    `).run(user.id);
 
-    if (vouches.has(key)) {
-      return interaction.reply({ content: "⚠️ You already vouched this user.", ephemeral: true });
-    }
-
-    vouches.set(key, true);
-
-    const count = [...vouches.keys()].filter(k => k.endsWith(user.id)).length;
+    const data = getUser(user.id);
 
     const embed = new EmbedBuilder()
       .setTitle("Vouch Added")
-      .setColor(0x00ff88)
-      .setDescription(`<@${user.id}> received a vouch!`)
-      .addFields({ name: "Total Vouches", value: `${count}` })
+      .setColor("Green")
+      .setDescription(`<@${user.id}> received a vouch`)
+      .addFields({ name: "Total Vouches", value: `${data.vouches}` })
       .setImage(images.vouch);
 
     interaction.reply({ embeds: [embed] });
@@ -121,13 +149,13 @@ client.on("interactionCreate", async interaction => {
 
   if (interaction.commandName === "rep") {
 
-    const count = [...vouches.keys()].filter(k => k.endsWith(user.id)).length;
+    const data = getUser(user.id);
 
     const embed = new EmbedBuilder()
       .setTitle("User Reputation")
-      .setColor(0x00ffff)
-      .setDescription(`<@${user.id}> reputation`)
-      .addFields({ name: "Total Vouches", value: `${count}` })
+      .setColor("Blue")
+      .setDescription(`<@${user.id}>`)
+      .addFields({ name: "Total Vouches", value: `${data.vouches}` })
       .setImage(images.rep);
 
     interaction.reply({ embeds: [embed] });
@@ -136,21 +164,19 @@ client.on("interactionCreate", async interaction => {
 
   if (interaction.commandName === "report") {
 
-    const key = `${interaction.user.id}-${user.id}`;
+    db.prepare(`
+    UPDATE users
+    SET reports = reports + 1
+    WHERE userId = ?
+    `).run(user.id);
 
-    if (reports.has(key)) {
-      return interaction.reply({ content: "⚠️ You already reported this user.", ephemeral: true });
-    }
-
-    reports.set(key, true);
-
-    const count = [...reports.keys()].filter(k => k.endsWith(user.id)).length;
+    const data = getUser(user.id);
 
     const embed = new EmbedBuilder()
       .setTitle("User Reported")
-      .setColor(0xff0000)
-      .setDescription(`<@${user.id}> reported as scammer`)
-      .addFields({ name: "Reports", value: `${count}` })
+      .setColor("Red")
+      .setDescription(`<@${user.id}> reported`)
+      .addFields({ name: "Reports", value: `${data.reports}` })
       .setImage(images.report);
 
     interaction.reply({ embeds: [embed] });
@@ -159,21 +185,19 @@ client.on("interactionCreate", async interaction => {
 
   if (interaction.commandName === "fakevouch") {
 
-    const key = `${interaction.user.id}-${user.id}`;
+    db.prepare(`
+    UPDATE users
+    SET fakeReports = fakeReports + 1
+    WHERE userId = ?
+    `).run(user.id);
 
-    if (fakeReports.has(key)) {
-      return interaction.reply({ content: "⚠️ Already reported fake vouch.", ephemeral: true });
-    }
-
-    fakeReports.set(key, true);
-
-    const count = [...fakeReports.keys()].filter(k => k.endsWith(user.id)).length;
+    const data = getUser(user.id);
 
     const embed = new EmbedBuilder()
       .setTitle("Fake Vouch Report")
-      .setColor(0xff9900)
+      .setColor("Orange")
       .setDescription(`<@${user.id}> reported for fake vouch`)
-      .addFields({ name: "Fake Vouch Report", value: `${count}` })
+      .addFields({ name: "Fake Vouch Report", value: `${data.fakeReports}` })
       .setImage(images.report);
 
     interaction.reply({ embeds: [embed] });
@@ -182,18 +206,17 @@ client.on("interactionCreate", async interaction => {
 
   if (interaction.commandName === "info") {
 
-    const vouchCount = [...vouches.keys()].filter(k => k.endsWith(user.id)).length;
-    const reportCount = [...reports.keys()].filter(k => k.endsWith(user.id)).length;
-    const fakeCount = [...fakeReports.keys()].filter(k => k.endsWith(user.id)).length;
+    const data = getUser(user.id);
 
     const embed = new EmbedBuilder()
       .setTitle("User Info")
-      .setColor(0x3498db)
+      .setColor("Purple")
       .setDescription(`<@${user.id}>`)
       .addFields(
-        { name: "Vouches", value: `${vouchCount}`, inline: true },
-        { name: "Reports", value: `${reportCount}`, inline: true },
-        { name: "Fake Vouch Report", value: `${fakeCount}`, inline: true }
+        { name: "Vouches", value: `${data.vouches}`, inline: true },
+        { name: "Reports", value: `${data.reports}`, inline: true },
+        { name: "Fake Vouch Report", value: `${data.fakeReports}`, inline: true },
+        { name: "Messages", value: `${data.messages}`, inline: true }
       )
       .setImage(images.info);
 
