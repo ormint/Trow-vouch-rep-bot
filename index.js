@@ -13,21 +13,18 @@ const Database = require("better-sqlite3");
 const db = new Database("database.db");
 
 const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMembers
-  ]
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers]
 });
 
-// ===== ŞƏKİL LİNKLƏRİ (öz linklərinlə dəyiş) =====
+// ==== Şəkil linkləri (öz linklərinlə dəyiş) ====
 const images = {
   vouch: "https://media.discordapp.net/attachments/1468414813536518196/1479946564028993687/content.png?ex=69ade324&is=69ac91a4&hm=0080fcd78d34ca9a1623c261bf494f0aff918617b24da88fb694069e3ca98a2a&=&format=webp&quality=lossless&width=1440&height=960",
   report: "https://media.discordapp.net/attachments/1468414813536518196/1479946580084658226/content.png?ex=69ade328&is=69ac91a8&hm=fab0be86a7014cafdb768e58069f9aa874ee2b613d35aca2ef0a8ccb5fee9012&=&format=webp&quality=lossless&width=1440&height=960",
   info: "https://media.discordapp.net/attachments/1468414813536518196/1479946427168718929/content.png?ex=69ade304&is=69ac9184&hm=b7a3318b9a93f00258184ef9c1199fcfb7f4765aeedddacb51e1b6ef31290ca4&=&format=webp&quality=lossless&width=1440&height=960",
-  rep: "https://media.discordapp.net/attachments/1468414813536518196/1479946580084658226/content.png?ex=69ade328&is=69ac91a8&hm=fab0be86a7014cafdb768e58069f9aa874ee2b613d35aca2ef0a8ccb5fee9012&=&format=webp&quality=lossless&width=1440&height=960"
+  rep: "https://media.discordapp.net/attachments/1468414813536518196/1479946596136259665/content.png?ex=69ade32c&is=69ac91ac&hm=004808584395fb7909404625060268695ead7fcb4df303bd779c9fce9e2b7876&=&format=webp&quality=lossless&width=1440&height=960"
 };
 
-// ===== DATABASE TABLE =====
+// ==== Database table ====
 db.prepare(`
 CREATE TABLE IF NOT EXISTS users (
   userId TEXT PRIMARY KEY,
@@ -39,57 +36,80 @@ CREATE TABLE IF NOT EXISTS users (
 
 function getUser(id) {
   let user = db.prepare("SELECT * FROM users WHERE userId = ?").get(id);
-
   if (!user) {
-    db.prepare(`
-      INSERT INTO users (userId)
-      VALUES (?)
-    `).run(id);
-
+    db.prepare("INSERT INTO users (userId) VALUES (?)").run(id);
     user = db.prepare("SELECT * FROM users WHERE userId = ?").get(id);
   }
-
   return user;
 }
 
-// ===== SLASH COMMANDS =====
-const commands = [
+// ==== Account age check (5 gün) ====
+function isAccountOldEnough(user) {
+  const accountAgeDays =
+    (Date.now() - user.createdTimestamp) / (1000 * 60 * 60 * 24);
+  return accountAgeDays >= 5;
+}
 
+// ==== Trust hesabı ====
+function calculateTrust(user, member, data) {
+  let score = 0;
+
+  const accountAgeDays =
+    (Date.now() - user.createdTimestamp) / (1000 * 60 * 60 * 24);
+
+  if (accountAgeDays > 365) score += 40;
+  else if (accountAgeDays > 180) score += 30;
+  else if (accountAgeDays > 30) score += 20;
+  else score += 10;
+
+  const joinAgeDays =
+    (Date.now() - member.joinedTimestamp) / (1000 * 60 * 60 * 24);
+
+  if (joinAgeDays > 180) score += 30;
+  else if (joinAgeDays > 30) score += 20;
+  else if (joinAgeDays > 7) score += 10;
+  else score += 5;
+
+  if (data.vouches > 20) score += 30;
+  else if (data.vouches > 10) score += 20;
+  else if (data.vouches > 5) score += 10;
+  else score += 5;
+
+  score -= data.reports * 10;
+  score -= data.fakeReports * 15;
+
+  if (score < 0) score = 0;
+  if (score > 100) score = 100;
+
+  return score;
+}
+
+// ==== Slash commands ====
+const commands = [
   new SlashCommandBuilder()
     .setName("vouch")
     .setDescription("Give a vouch")
-    .addUserOption(o =>
-      o.setName("user").setDescription("User").setRequired(true)
-    ),
+    .addUserOption(o => o.setName("user").setDescription("User").setRequired(true)),
 
   new SlashCommandBuilder()
     .setName("rep")
     .setDescription("Check reputation")
-    .addUserOption(o =>
-      o.setName("user").setDescription("User").setRequired(true)
-    ),
+    .addUserOption(o => o.setName("user").setDescription("User").setRequired(true)),
 
   new SlashCommandBuilder()
     .setName("report")
     .setDescription("Report scammer")
-    .addUserOption(o =>
-      o.setName("user").setDescription("User").setRequired(true)
-    ),
+    .addUserOption(o => o.setName("user").setDescription("User").setRequired(true)),
 
   new SlashCommandBuilder()
     .setName("fakevouch")
     .setDescription("Report fake vouch")
-    .addUserOption(o =>
-      o.setName("user").setDescription("User").setRequired(true)
-    ),
+    .addUserOption(o => o.setName("user").setDescription("User").setRequired(true)),
 
   new SlashCommandBuilder()
     .setName("info")
     .setDescription("User info")
-    .addUserOption(o =>
-      o.setName("user").setDescription("User").setRequired(true)
-    )
-
+    .addUserOption(o => o.setName("user").setDescription("User").setRequired(true))
 ].map(c => c.toJSON());
 
 const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
@@ -105,48 +125,7 @@ client.once("ready", () => {
   console.log(`Bot ready: ${client.user.tag}`);
 });
 
-// ===== TRUST SCORE FUNCTION =====
-function calculateTrust(user, member, data) {
-
-  let score = 0;
-
-  // Account Age
-  const accountAgeDays =
-    (Date.now() - user.createdTimestamp) / (1000 * 60 * 60 * 24);
-
-  if (accountAgeDays > 365) score += 40;
-  else if (accountAgeDays > 180) score += 30;
-  else if (accountAgeDays > 30) score += 20;
-  else score += 10;
-
-  // Server Join Age
-  const joinAgeDays =
-    (Date.now() - member.joinedTimestamp) / (1000 * 60 * 60 * 24);
-
-  if (joinAgeDays > 180) score += 30;
-  else if (joinAgeDays > 30) score += 20;
-  else if (joinAgeDays > 7) score += 10;
-  else score += 5;
-
-  // Vouches
-  if (data.vouches > 20) score += 30;
-  else if (data.vouches > 10) score += 20;
-  else if (data.vouches > 5) score += 10;
-  else score += 5;
-
-  // Penalties
-  score -= data.reports * 10;
-  score -= data.fakeReports * 15;
-
-  if (score < 0) score = 0;
-  if (score > 100) score = 100;
-
-  return score;
-}
-
-// ===== INTERACTIONS =====
 client.on("interactionCreate", async interaction => {
-
   if (!interaction.isChatInputCommand()) return;
 
   const user = interaction.options.getUser("user");
@@ -156,6 +135,13 @@ client.on("interactionCreate", async interaction => {
 
   // ===== VOUCH =====
   if (interaction.commandName === "vouch") {
+
+    if (!isAccountOldEnough(interaction.user)) {
+      return interaction.reply({
+        content: "❌ Your account must be at least 5 days old to use vouch.",
+        ephemeral: true
+      });
+    }
 
     if (user.id === interaction.user.id) {
       return interaction.reply({
@@ -200,6 +186,13 @@ client.on("interactionCreate", async interaction => {
   // ===== REPORT =====
   if (interaction.commandName === "report") {
 
+    if (!isAccountOldEnough(interaction.user)) {
+      return interaction.reply({
+        content: "❌ Your account must be at least 5 days old to report users.",
+        ephemeral: true
+      });
+    }
+
     db.prepare(`
       UPDATE users
       SET reports = reports + 1
@@ -220,6 +213,13 @@ client.on("interactionCreate", async interaction => {
 
   // ===== FAKE VOUCH =====
   if (interaction.commandName === "fakevouch") {
+
+    if (!isAccountOldEnough(interaction.user)) {
+      return interaction.reply({
+        content: "❌ Your account must be at least 5 days old to report fake vouch.",
+        ephemeral: true
+      });
+    }
 
     db.prepare(`
       UPDATE users
@@ -243,7 +243,6 @@ client.on("interactionCreate", async interaction => {
   if (interaction.commandName === "info") {
 
     const data = getUser(user.id);
-
     const trust = calculateTrust(user, member, data);
 
     let risk = "🔴 High Risk";
