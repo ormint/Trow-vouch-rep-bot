@@ -32,18 +32,34 @@ CREATE TABLE IF NOT EXISTS users (
 )
 `).run();
 
+db.prepare(`
+CREATE TABLE IF NOT EXISTS vouchers (
+  fromUser TEXT,
+  toUser TEXT,
+  PRIMARY KEY (fromUser, toUser)
+)
+`).run();
+
 function getUser(id) {
+
   let user = db.prepare("SELECT * FROM users WHERE userId = ?").get(id);
 
   if (!user) {
-    db.prepare("INSERT INTO users (userId) VALUES (?)").run(id);
+
+    db.prepare(`
+    INSERT INTO users (userId)
+    VALUES (?)
+    `).run(id);
+
     user = db.prepare("SELECT * FROM users WHERE userId = ?").get(id);
+
   }
 
   return user;
 }
 
 function isAccountOldEnough(user) {
+
   const accountAgeDays =
     (Date.now() - user.createdTimestamp) / (1000 * 60 * 60 * 24);
 
@@ -184,11 +200,30 @@ client.on("interactionCreate", async interaction => {
       });
     }
 
+    const already = db.prepare(`
+      SELECT *
+      FROM vouchers
+      WHERE fromUser = ?
+      AND toUser = ?
+    `).get(interaction.user.id, user.id);
+
+    if (already) {
+      return interaction.reply({
+        content: "❌ You already vouched this user.",
+        ephemeral: true
+      });
+    }
+
     db.prepare(`
       UPDATE users
       SET vouches = vouches + 1
       WHERE userId = ?
     `).run(user.id);
+
+    db.prepare(`
+      INSERT INTO vouchers (fromUser, toUser)
+      VALUES (?, ?)
+    `).run(interaction.user.id, user.id);
 
     const data = getUser(user.id);
 
