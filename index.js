@@ -6,189 +6,197 @@ const {
   REST,
   Routes,
   SlashCommandBuilder,
-  Collection
+  Collection,
+  EmbedBuilder
 } = require("discord.js");
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds]
 });
 
-// Storage
-const vouches = new Collection();     // key: giverId-targetId
-const reports = new Collection();     // key: reporterId-targetId
-const fakeReports = new Collection(); // key: reporterId-targetId
+const vouches = new Collection();
+const reports = new Collection();
+const fakeReports = new Collection();
 
-// Slash commands
+const images = {
+  vouch: "VOUCH_IMAGE_LINK",
+  report: "REPORTED_IMAGE_LINK",
+  info: "INFO_IMAGE_LINK",
+  rep: "REPUTATED_IMAGE_LINK"
+};
+
 const commands = [
   new SlashCommandBuilder()
     .setName("vouch")
-    .setDescription("Give a vouch to a user")
+    .setDescription("Give a vouch")
     .addUserOption(option =>
-      option.setName("user")
-        .setDescription("User you want to vouch for")
-        .setRequired(true)
+      option.setName("user").setDescription("User").setRequired(true)
     ),
 
   new SlashCommandBuilder()
     .setName("rep")
-    .setDescription("Check a user's reputation")
+    .setDescription("Check reputation")
     .addUserOption(option =>
-      option.setName("user")
-        .setDescription("User whose reputation you want to check")
-        .setRequired(true)
+      option.setName("user").setDescription("User").setRequired(true)
     ),
 
   new SlashCommandBuilder()
     .setName("report")
     .setDescription("Report a scammer")
     .addUserOption(option =>
-      option.setName("user")
-        .setDescription("User you want to report")
-        .setRequired(true)
+      option.setName("user").setDescription("User").setRequired(true)
     ),
 
   new SlashCommandBuilder()
     .setName("fakevouch")
-    .setDescription("Report fake vouch activity")
+    .setDescription("Report fake vouch")
     .addUserOption(option =>
-      option.setName("user")
-        .setDescription("User you want to report for fake vouch")
-        .setRequired(true)
+      option.setName("user").setDescription("User").setRequired(true)
+    ),
+
+  new SlashCommandBuilder()
+    .setName("info")
+    .setDescription("User info")
+    .addUserOption(option =>
+      option.setName("user").setDescription("User").setRequired(true)
     )
 
 ].map(cmd => cmd.toJSON());
 
-// Register slash commands
 const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
 
 (async () => {
   try {
-    console.log("Loading slash commands...");
+    console.log("Loading commands...");
 
     await rest.put(
       Routes.applicationCommands(process.env.CLIENT_ID),
       { body: commands }
     );
 
-    console.log("Commands loaded successfully.");
+    console.log("Commands loaded.");
   } catch (error) {
     console.error(error);
   }
 })();
 
 client.once("ready", () => {
-  console.log(`Bot is ready: ${client.user.tag}`);
+  console.log(`Bot ready: ${client.user.tag}`);
 });
 
-// Interaction handler
 client.on("interactionCreate", async interaction => {
+
   if (!interaction.isChatInputCommand()) return;
 
-  const command = interaction.commandName;
+  const user = interaction.options.getUser("user");
 
-  // ===== VOUCH =====
-  if (command === "vouch") {
+  if (interaction.commandName === "vouch") {
 
-    const user = interaction.options.getUser("user");
-    const giver = interaction.user;
-
-    if (user.id === giver.id) {
-      return interaction.reply({
-        content: "❌ You cannot vouch for yourself.",
-        ephemeral: true
-      });
+    if (user.id === interaction.user.id) {
+      return interaction.reply({ content: "❌ You cannot vouch yourself.", ephemeral: true });
     }
 
-    const key = `${giver.id}-${user.id}`;
+    const key = `${interaction.user.id}-${user.id}`;
 
     if (vouches.has(key)) {
-      return interaction.reply({
-        content: "⚠️ You already vouched for this user.",
-        ephemeral: true
-      });
+      return interaction.reply({ content: "⚠️ You already vouched this user.", ephemeral: true });
     }
 
     vouches.set(key, true);
 
     const count = [...vouches.keys()].filter(k => k.endsWith(user.id)).length;
 
-    await interaction.reply(
-      `✅ <@${user.id}> has received a vouch! (Total: ${count})`
-    );
+    const embed = new EmbedBuilder()
+      .setTitle("Vouch Added")
+      .setColor(0x00ff88)
+      .setDescription(`<@${user.id}> received a vouch!`)
+      .addFields({ name: "Total Vouches", value: `${count}` })
+      .setImage(images.vouch);
+
+    interaction.reply({ embeds: [embed] });
+
   }
 
-  // ===== REP =====
-  if (command === "rep") {
-
-    const user = interaction.options.getUser("user");
+  if (interaction.commandName === "rep") {
 
     const count = [...vouches.keys()].filter(k => k.endsWith(user.id)).length;
 
-    await interaction.reply(
-      `⭐ <@${user.id}>'s reputation: ${count} vouch(es)`
-    );
+    const embed = new EmbedBuilder()
+      .setTitle("User Reputation")
+      .setColor(0x00ffff)
+      .setDescription(`<@${user.id}> reputation`)
+      .addFields({ name: "Total Vouches", value: `${count}` })
+      .setImage(images.rep);
+
+    interaction.reply({ embeds: [embed] });
+
   }
 
-  // ===== SCAM REPORT =====
-  if (command === "report") {
+  if (interaction.commandName === "report") {
 
-    const user = interaction.options.getUser("user");
-    const reporter = interaction.user;
-
-    if (user.id === reporter.id) {
-      return interaction.reply({
-        content: "❌ You cannot report yourself.",
-        ephemeral: true
-      });
-    }
-
-    const key = `${reporter.id}-${user.id}`;
+    const key = `${interaction.user.id}-${user.id}`;
 
     if (reports.has(key)) {
-      return interaction.reply({
-        content: "⚠️ You already reported this user.",
-        ephemeral: true
-      });
+      return interaction.reply({ content: "⚠️ You already reported this user.", ephemeral: true });
     }
 
     reports.set(key, true);
 
     const count = [...reports.keys()].filter(k => k.endsWith(user.id)).length;
 
-    await interaction.reply(
-      `⚠️ <@${user.id}> has been reported as a scammer. (Reports: ${count})`
-    );
+    const embed = new EmbedBuilder()
+      .setTitle("User Reported")
+      .setColor(0xff0000)
+      .setDescription(`<@${user.id}> reported as scammer`)
+      .addFields({ name: "Reports", value: `${count}` })
+      .setImage(images.report);
+
+    interaction.reply({ embeds: [embed] });
+
   }
 
-  // ===== FAKE VOUCH REPORT =====
-  if (command === "fakevouch") {
+  if (interaction.commandName === "fakevouch") {
 
-    const user = interaction.options.getUser("user");
-    const reporter = interaction.user;
-
-    if (user.id === reporter.id) {
-      return interaction.reply({
-        content: "❌ You cannot report yourself.",
-        ephemeral: true
-      });
-    }
-
-    const key = `${reporter.id}-${user.id}`;
+    const key = `${interaction.user.id}-${user.id}`;
 
     if (fakeReports.has(key)) {
-      return interaction.reply({
-        content: "⚠️ You already reported fake vouch for this user.",
-        ephemeral: true
-      });
+      return interaction.reply({ content: "⚠️ Already reported fake vouch.", ephemeral: true });
     }
 
     fakeReports.set(key, true);
 
     const count = [...fakeReports.keys()].filter(k => k.endsWith(user.id)).length;
 
-    await interaction.reply(
-      `🚨 <@${user.id}> has been reported for fake vouch activity. (Reports: ${count})`
-    );
+    const embed = new EmbedBuilder()
+      .setTitle("Fake Vouch Report")
+      .setColor(0xff9900)
+      .setDescription(`<@${user.id}> reported for fake vouch`)
+      .addFields({ name: "Fake Reports", value: `${count}` })
+      .setImage(images.report);
+
+    interaction.reply({ embeds: [embed] });
+
+  }
+
+  if (interaction.commandName === "info") {
+
+    const vouchCount = [...vouches.keys()].filter(k => k.endsWith(user.id)).length;
+    const reportCount = [...reports.keys()].filter(k => k.endsWith(user.id)).length;
+    const fakeCount = [...fakeReports.keys()].filter(k => k.endsWith(user.id)).length;
+
+    const embed = new EmbedBuilder()
+      .setTitle("User Info")
+      .setColor(0x3498db)
+      .setDescription(`<@${user.id}>`)
+      .addFields(
+        { name: "Vouches", value: `${vouchCount}`, inline: true },
+        { name: "Reports", value: `${reportCount}`, inline: true },
+        { name: "Fake Reports", value: `${fakeCount}`, inline: true }
+      )
+      .setImage(images.info);
+
+    interaction.reply({ embeds: [embed] });
+
   }
 
 });
