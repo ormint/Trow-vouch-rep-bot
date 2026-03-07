@@ -1,370 +1,419 @@
 require("dotenv").config();
 
 const {
-  Client,
-  GatewayIntentBits,
-  REST,
-  Routes,
-  SlashCommandBuilder,
-  EmbedBuilder,
-  PermissionFlagsBits
+Client,
+GatewayIntentBits,
+REST,
+Routes,
+SlashCommandBuilder,
+EmbedBuilder,
+PermissionFlagsBits
 } = require("discord.js");
 
 const Database = require("better-sqlite3");
 const db = new Database("database.db");
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers]
+intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers]
 });
 
 const images = {
-  vouch: "https://media.discordapp.net/attachments/1468414813536518196/1479946564028993687/content.png?ex=69ade324&is=69ac91a4&hm=0080fcd78d34ca9a1623c261bf494f0aff918617b24da88fb694069e3ca98a2a&=&format=webp&quality=lossless&width=1440&height=960",
-  report: "https://media.discordapp.net/attachments/1468414813536518196/1479946580084658226/content.png?ex=69ade328&is=69ac91a8&hm=fab0be86a7014cafdb768e58069f9aa874ee2b613d35aca2ef0a8ccb5fee9012&=&format=webp&quality=lossless&width=1440&height=960",
-  info: "https://media.discordapp.net/attachments/1468414813536518196/1479946427168718929/content.png?ex=69ade304&is=69ac9184&hm=b7a3318b9a93f00258184ef9c1199fcfb7f4765aeedddacb51e1b6ef31290ca4&=&format=webp&quality=lossless&width=1440&height=960",
-  rep: "https://media.discordapp.net/attachments/1468414813536518196/1479946596136259665/content.png?ex=69ade32c&is=69ac91ac&hm=004808584395fb7909404625060268695ead7fcb4df303bd779c9fce9e2b7876&=&format=webp&quality=lossless&width=1440&height=960"
+vouch: "https://media.discordapp.net/attachments/1468414813536518196/1479946564028993687/content.png?ex=69ade324&is=69ac91a4&hm=0080fcd78d34ca9a1623c261bf494f0aff918617b24da88fb694069e3ca98a2a&=&format=webp&quality=lossless&width=1440&height=960",
+report: "https://media.discordapp.net/attachments/1468414813536518196/1479946580084658226/content.png?ex=69ade328&is=69ac91a8&hm=fab0be86a7014cafdb768e58069f9aa874ee2b613d35aca2ef0a8ccb5fee9012&=&format=webp&quality=lossless&width=1440&height=960",
+info: "https://media.discordapp.net/attachments/1468414813536518196/1479946427168718929/content.png?ex=69ade304&is=69ac9184&hm=b7a3318b9a93f00258184ef9c1199fcfb7f4765aeedddacb51e1b6ef31290ca4&=&format=webp&quality=lossless&width=1440&height=960",
+rep: "https://media.discordapp.net/attachments/1468414813536518196/1479946596136259665/content.png?ex=69ade32c&is=69ac91ac&hm=004808584395fb7909404625060268695ead7fcb4df303bd779c9fce9e2b7876&=&format=webp&quality=lossless&width=1440&height=960"
 };
 
 db.prepare(`
 CREATE TABLE IF NOT EXISTS users (
-  userId TEXT PRIMARY KEY,
-  vouches INTEGER DEFAULT 0,
-  reports INTEGER DEFAULT 0,
-  fakeReports INTEGER DEFAULT 0
+userId TEXT PRIMARY KEY,
+vouches INTEGER DEFAULT 0,
+reports INTEGER DEFAULT 0,
+fakeReports INTEGER DEFAULT 0
 )
 `).run();
 
 db.prepare(`
 CREATE TABLE IF NOT EXISTS vouchers (
-  fromUser TEXT,
-  toUser TEXT,
-  PRIMARY KEY (fromUser, toUser)
+fromUser TEXT,
+toUser TEXT,
+PRIMARY KEY (fromUser,toUser)
 )
 `).run();
 
 db.prepare(`
 CREATE TABLE IF NOT EXISTS logs (
-  type TEXT PRIMARY KEY,
-  channelId TEXT
+type TEXT PRIMARY KEY,
+channelId TEXT
 )
 `).run();
 
-function getUser(id) {
+function getUser(id){
 
-  let user = db.prepare("SELECT * FROM users WHERE userId = ?").get(id);
+let user = db.prepare("SELECT * FROM users WHERE userId=?").get(id);
 
-  if (!user) {
-    db.prepare("INSERT INTO users (userId) VALUES (?)").run(id);
-    user = db.prepare("SELECT * FROM users WHERE userId = ?").get(id);
-  }
-
-  return user;
+if(!user){
+db.prepare("INSERT INTO users (userId) VALUES (?)").run(id);
+user = db.prepare("SELECT * FROM users WHERE userId=?").get(id);
 }
 
-function getLogChannel(type, guild) {
+return user;
 
-  const row = db.prepare("SELECT channelId FROM logs WHERE type=?").get(type);
-  if (!row) return null;
-
-  return guild.channels.cache.get(row.channelId);
 }
 
-function isAccountOldEnough(user) {
+function getLogChannel(type,guild){
 
-  const days =
-    (Date.now() - user.createdTimestamp) / (1000 * 60 * 60 * 24);
+const row = db.prepare("SELECT channelId FROM logs WHERE type=?").get(type);
+if(!row) return null;
 
-  return days >= 5;
+return guild.channels.cache.get(row.channelId);
+
 }
 
-function calculateTrust(user, member, data) {
+function isAccountOldEnough(user){
 
-  let score = 0;
+const days =
+(Date.now() - user.createdTimestamp) / (1000*60*60*24);
 
-  const accDays =
-    (Date.now() - user.createdTimestamp) / (1000 * 60 * 60 * 24);
+return days >= 5;
 
-  if (accDays > 365) score += 40;
-  else if (accDays > 180) score += 30;
-  else if (accDays > 30) score += 20;
-  else score += 10;
-
-  const joinDays =
-    (Date.now() - member.joinedTimestamp) / (1000 * 60 * 60 * 24);
-
-  if (joinDays > 180) score += 30;
-  else if (joinDays > 30) score += 20;
-  else if (joinDays > 7) score += 10;
-  else score += 5;
-
-  if (data.vouches > 20) score += 30;
-  else if (data.vouches > 10) score += 20;
-  else if (data.vouches > 5) score += 10;
-  else score += 5;
-
-  score -= data.reports * 10;
-  score -= data.fakeReports * 15;
-
-  if (score < 0) score = 0;
-  if (score > 100) score = 100;
-
-  return score;
 }
 
-const commands = [
+function calculateTrust(user,member,data){
 
-  new SlashCommandBuilder()
-    .setName("vouch")
-    .setDescription("Give a vouch")
-    .addUserOption(o => o.setName("user").setDescription("User").setRequired(true)),
+let score = 0;
 
-  new SlashCommandBuilder()
-    .setName("rep")
-    .setDescription("Check reputation")
-    .addUserOption(o => o.setName("user").setDescription("User").setRequired(true)),
+const accDays =
+(Date.now() - user.createdTimestamp) / (1000*60*60*24);
 
-  new SlashCommandBuilder()
-    .setName("report")
-    .setDescription("Report scammer")
-    .addUserOption(o => o.setName("user").setDescription("User").setRequired(true)),
+if(accDays>365) score+=40;
+else if(accDays>180) score+=30;
+else if(accDays>30) score+=20;
+else score+=10;
 
-  new SlashCommandBuilder()
-    .setName("fakevouch")
-    .setDescription("Report fake vouch")
-    .addUserOption(o => o.setName("user").setDescription("User").setRequired(true)),
+const joinDays =
+(Date.now() - member.joinedTimestamp) / (1000*60*60*24);
 
-  new SlashCommandBuilder()
-    .setName("info")
-    .setDescription("User info")
-    .addUserOption(o => o.setName("user").setDescription("User").setRequired(true)),
+if(joinDays>180) score+=30;
+else if(joinDays>30) score+=20;
+else if(joinDays>7) score+=10;
+else score+=5;
 
-  new SlashCommandBuilder()
-    .setName("top")
-    .setDescription("Show top trusted users"),
+if(data.vouches>20) score+=30;
+else if(data.vouches>10) score+=20;
+else if(data.vouches>5) score+=10;
+else score+=5;
 
-  new SlashCommandBuilder()
-    .setName("setlog")
-    .setDescription("Set log channel")
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-    .addStringOption(o =>
-      o.setName("type")
-        .setDescription("Log type")
-        .setRequired(true)
-        .addChoices(
-          { name: "vouch", value: "vouch" },
-          { name: "report", value: "report" },
-          { name: "fake", value: "fake" }
-        )
-    )
-    .addChannelOption(o =>
-      o.setName("channel")
-        .setDescription("Log channel")
-        .setRequired(true)
-    )
+score -= data.reports*10;
+score -= data.fakeReports*15;
 
-].map(c => c.toJSON());
+if(score<0) score=0;
+if(score>100) score=100;
 
-const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
+return score;
 
-(async () => {
+}
 
-  await rest.put(
-    Routes.applicationCommands(process.env.CLIENT_ID),
-    { body: commands }
-  );
+const commands=[
+
+new SlashCommandBuilder()
+.setName("vouch")
+.setDescription("Give a vouch")
+.addUserOption(o=>o.setName("user").setDescription("User").setRequired(true)),
+
+new SlashCommandBuilder()
+.setName("rep")
+.setDescription("Check reputation")
+.addUserOption(o=>o.setName("user").setDescription("User").setRequired(true)),
+
+new SlashCommandBuilder()
+.setName("report")
+.setDescription("Report scammer")
+.addUserOption(o=>o.setName("user").setDescription("User").setRequired(true)),
+
+new SlashCommandBuilder()
+.setName("fakevouch")
+.setDescription("Report fake vouch")
+.addUserOption(o=>o.setName("user").setDescription("User").setRequired(true)),
+
+new SlashCommandBuilder()
+.setName("info")
+.setDescription("User info")
+.addUserOption(o=>o.setName("user").setDescription("User").setRequired(true)),
+
+new SlashCommandBuilder()
+.setName("top")
+.setDescription("Show top trusted users"),
+
+new SlashCommandBuilder()
+.setName("setlog")
+.setDescription("Set log channel")
+.setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+.addStringOption(o=>
+o.setName("type")
+.setDescription("Log type")
+.setRequired(true)
+.addChoices(
+{name:"vouch",value:"vouch"},
+{name:"report",value:"report"},
+{name:"fake",value:"fake"}
+)
+)
+.addChannelOption(o=>
+o.setName("channel")
+.setDescription("Log channel")
+.setRequired(true)
+)
+
+].map(c=>c.toJSON());
+
+const rest = new REST({version:"10"}).setToken(process.env.TOKEN);
+
+(async()=>{
+
+await rest.put(
+Routes.applicationCommands(process.env.CLIENT_ID),
+{body:commands}
+);
 
 })();
 
-client.once("ready", () => {
-  console.log(`Bot ready: ${client.user.tag}`);
+client.once("ready",()=>{
+console.log(`Bot ready: ${client.user.tag}`);
 });
 
-client.on("interactionCreate", async interaction => {
+client.on("interactionCreate",async interaction=>{
 
-  if (!interaction.isChatInputCommand()) return;
+if(!interaction.isChatInputCommand()) return;
 
-  if (interaction.commandName === "setlog") {
+if(interaction.commandName==="setlog"){
 
-    const type = interaction.options.getString("type");
-    const channel = interaction.options.getChannel("channel");
+const type = interaction.options.getString("type");
+const channel = interaction.options.getChannel("channel");
 
-    db.prepare(`
-      INSERT OR REPLACE INTO logs (type, channelId)
-      VALUES (?, ?)
-    `).run(type, channel.id);
+db.prepare(`
+INSERT OR REPLACE INTO logs (type,channelId)
+VALUES (?,?)
+`).run(type,channel.id);
 
-    return interaction.reply(`✅ ${type} logs set to ${channel}`);
-  }
+return interaction.reply(`✅ ${type} log channel set to ${channel}`);
 
-  if (interaction.commandName === "top") {
+}
 
-    const users = db.prepare(`
-      SELECT userId, vouches
-      FROM users
-      ORDER BY vouches DESC
-      LIMIT 10
-    `).all();
+if(interaction.commandName==="top"){
 
-    if (!users.length)
-      return interaction.reply("No vouches recorded.");
+const users = db.prepare(`
+SELECT userId,vouches
+FROM users
+ORDER BY vouches DESC
+LIMIT 10
+`).all();
 
-    let text = "";
+if(!users.length)
+return interaction.reply("No vouches recorded.");
 
-    users.forEach((u, i) => {
-      text += `${i + 1}. <@${u.userId}> — ${u.vouches} vouches\n`;
-    });
+let text="";
 
-    const embed = new EmbedBuilder()
-      .setTitle("🏆 Top Trusted Users")
-      .setColor("Gold")
-      .setDescription(text);
+users.forEach((u,i)=>{
+text += `${i+1}. <@${u.userId}> — ${u.vouches} vouches\n`;
+});
 
-    return interaction.reply({ embeds: [embed] });
-  }
+const embed = new EmbedBuilder()
+.setTitle("🏆 Top Trusted Users")
+.setColor("Gold")
+.setDescription(text);
 
-  const user = interaction.options.getUser("user");
-  const member = await interaction.guild.members.fetch(user.id);
+return interaction.reply({embeds:[embed]});
 
-  getUser(user.id);
+}
 
-  if (interaction.commandName === "vouch") {
+const user = interaction.options.getUser("user");
+const member = await interaction.guild.members.fetch(user.id);
 
-    if (!isAccountOldEnough(interaction.user))
-      return interaction.reply({
-        content: "❌ Account must be 5 days old.",
-        ephemeral: true
-      });
+getUser(user.id);
 
-    if (user.id === interaction.user.id)
-      return interaction.reply({
-        content: "❌ You cannot vouch yourself.",
-        ephemeral: true
-      });
+if(interaction.commandName==="vouch"){
 
-    const already = db.prepare(`
-      SELECT * FROM vouchers
-      WHERE fromUser=? AND toUser=?
-    `).get(interaction.user.id, user.id);
+if(!isAccountOldEnough(interaction.user))
+return interaction.reply({
+content:"❌ Account must be 5 days old.",
+ephemeral:true
+});
 
-    if (already)
-      return interaction.reply({
-        content: "❌ You already vouched this user.",
-        ephemeral: true
-      });
+if(user.id===interaction.user.id)
+return interaction.reply({
+content:"❌ You cannot vouch yourself.",
+ephemeral:true
+});
 
-    db.prepare(`
-      UPDATE users SET vouches=vouches+1 WHERE userId=?
-    `).run(user.id);
+const already = db.prepare(`
+SELECT * FROM vouchers
+WHERE fromUser=? AND toUser=?
+`).get(interaction.user.id,user.id);
 
-    db.prepare(`
-      INSERT INTO vouchers VALUES (?,?)
-    `).run(interaction.user.id, user.id);
+if(already)
+return interaction.reply({
+content:"❌ You already vouched this user.",
+ephemeral:true
+});
 
-    const data = getUser(user.id);
+db.prepare(`
+UPDATE users SET vouches=vouches+1 WHERE userId=?
+`).run(user.id);
 
-    const embed = new EmbedBuilder()
-      .setTitle("Vouch Added")
-      .setColor("Green")
-      .setDescription(`<@${user.id}> received a vouch`)
-      .addFields({ name: "Total Vouches", value: `${data.vouches}` })
-      .setImage(images.vouch);
+db.prepare(`
+INSERT INTO vouchers VALUES (?,?)
+`).run(interaction.user.id,user.id);
 
-    interaction.reply({ embeds: [embed] });
+const data = getUser(user.id);
 
-    const log = getLogChannel("vouch", interaction.guild);
-    if (log) log.send(`📜 ${interaction.user.tag} vouched ${user.tag}`);
-  }
+const embed = new EmbedBuilder()
+.setTitle("Vouch Added")
+.setColor("Green")
+.setDescription(`<@${user.id}> received a vouch`)
+.addFields({name:"Total Vouches",value:`${data.vouches}`})
+.setImage(images.vouch);
 
-  if (interaction.commandName === "report") {
+interaction.reply({embeds:[embed]});
 
-    if (!isAccountOldEnough(interaction.user))
-      return interaction.reply({
-        content: "❌ Account must be 5 days old.",
-        ephemeral: true
-      });
+const log = getLogChannel("vouch",interaction.guild);
 
-    db.prepare(`
-      UPDATE users SET reports=reports+1 WHERE userId=?
-    `).run(user.id);
+if(log){
 
-    const data = getUser(user.id);
+const logEmbed = new EmbedBuilder()
+.setTitle("📜 VOUCH LOG")
+.setColor("Green")
+.addFields(
+{name:"User",value:`<@${interaction.user.id}>`,inline:true},
+{name:"Target",value:`<@${user.id}>`,inline:true},
+{name:"Total Vouches",value:`${data.vouches}`}
+)
+.setTimestamp();
 
-    const embed = new EmbedBuilder()
-      .setTitle("User Reported")
-      .setColor("Red")
-      .setDescription(`<@${user.id}> reported`)
-      .addFields({ name: "Reports", value: `${data.reports}` })
-      .setImage(images.report);
+log.send({embeds:[logEmbed]});
 
-    interaction.reply({ embeds: [embed] });
+}
 
-    const log = getLogChannel("report", interaction.guild);
-    if (log) log.send(`⚠ ${interaction.user.tag} reported ${user.tag}`);
-  }
+}
 
-  if (interaction.commandName === "fakevouch") {
+if(interaction.commandName==="report"){
 
-    if (!isAccountOldEnough(interaction.user))
-      return interaction.reply({
-        content: "❌ Account must be 5 days old.",
-        ephemeral: true
-      });
+if(!isAccountOldEnough(interaction.user))
+return interaction.reply({
+content:"❌ Account must be 5 days old.",
+ephemeral:true
+});
 
-    db.prepare(`
-      UPDATE users SET fakeReports=fakeReports+1 WHERE userId=?
-    `).run(user.id);
+db.prepare(`
+UPDATE users SET reports=reports+1 WHERE userId=?
+`).run(user.id);
 
-    const data = getUser(user.id);
+const data = getUser(user.id);
 
-    const embed = new EmbedBuilder()
-      .setTitle("Fake Vouch Report")
-      .setColor("Orange")
-      .setDescription(`<@${user.id}> reported`)
-      .addFields({ name: "Fake Reports", value: `${data.fakeReports}` });
+const embed = new EmbedBuilder()
+.setTitle("User Reported")
+.setColor("Red")
+.setDescription(`<@${user.id}> reported`)
+.addFields({name:"Reports",value:`${data.reports}`})
+.setImage(images.report);
 
-    interaction.reply({ embeds: [embed] });
+interaction.reply({embeds:[embed]});
 
-    const log = getLogChannel("fake", interaction.guild);
-    if (log) log.send(`🚨 ${interaction.user.tag} fake reported ${user.tag}`);
-  }
+const log = getLogChannel("report",interaction.guild);
 
-  if (interaction.commandName === "rep") {
+if(log){
 
-    const data = getUser(user.id);
+const logEmbed = new EmbedBuilder()
+.setTitle("⚠ REPORT LOG")
+.setColor("Red")
+.addFields(
+{name:"Reporter",value:`<@${interaction.user.id}>`,inline:true},
+{name:"Target",value:`<@${user.id}>`,inline:true}
+)
+.setTimestamp();
 
-    const embed = new EmbedBuilder()
-      .setTitle("User Reputation")
-      .setColor("Blue")
-      .setDescription(`<@${user.id}>`)
-      .addFields({ name: "Total Vouches", value: `${data.vouches}` })
-      .setImage(images.rep);
+log.send({embeds:[logEmbed]});
 
-    interaction.reply({ embeds: [embed] });
-  }
+}
 
-  if (interaction.commandName === "info") {
+}
 
-    const data = getUser(user.id);
-    const trust = calculateTrust(user, member, data);
+if(interaction.commandName==="fakevouch"){
 
-    let risk = "🔴 High Risk";
-    if (trust >= 80) risk = "🟢 Low Risk";
-    else if (trust >= 50) risk = "🟡 Medium Risk";
+db.prepare(`
+UPDATE users SET fakeReports=fakeReports+1 WHERE userId=?
+`).run(user.id);
 
-    const embed = new EmbedBuilder()
-      .setTitle("User Info")
-      .setColor("Purple")
-      .setDescription(`<@${user.id}>`)
-      .addFields(
-        { name: "Vouches", value: `${data.vouches}`, inline: true },
-        { name: "Reports", value: `${data.reports}`, inline: true },
-        { name: "Fake Reports", value: `${data.fakeReports}`, inline: true },
-        { name: "Trust Score", value: `${trust}%`, inline: true },
-        { name: "Risk Level", value: risk, inline: true }
-      )
-      .setImage(images.info);
+const data = getUser(user.id);
 
-    interaction.reply({ embeds: [embed] });
-  }
+const embed = new EmbedBuilder()
+.setTitle("Fake Vouch Report")
+.setColor("Orange")
+.setDescription(`<@${user.id}> reported for fake vouch`)
+.addFields({name:"Fake Reports",value:`${data.fakeReports}`});
+
+interaction.reply({embeds:[embed]});
+
+const log = getLogChannel("fake",interaction.guild);
+
+if(log){
+
+const logEmbed = new EmbedBuilder()
+.setTitle("🚨 FAKE VOUCH REPORT")
+.setColor("Orange")
+.addFields(
+{name:"Reporter",value:`<@${interaction.user.id}>`,inline:true},
+{name:"Target",value:`<@${user.id}>`,inline:true}
+)
+.setTimestamp();
+
+log.send({embeds:[logEmbed]});
+
+}
+
+}
+
+if(interaction.commandName==="rep"){
+
+const data = getUser(user.id);
+
+const embed = new EmbedBuilder()
+.setTitle("User Reputation")
+.setColor("Blue")
+.setDescription(`<@${user.id}>`)
+.addFields({name:"Total Vouches",value:`${data.vouches}`})
+.setImage(images.rep);
+
+interaction.reply({embeds:[embed]});
+
+}
+
+if(interaction.commandName==="info"){
+
+const data = getUser(user.id);
+
+const trust = calculateTrust(user,member,data);
+
+let risk="🔴 High Risk";
+if(trust>=80) risk="🟢 Low Risk";
+else if(trust>=50) risk="🟡 Medium Risk";
+
+const embed = new EmbedBuilder()
+.setTitle("User Info")
+.setColor("Purple")
+.setDescription(`<@${user.id}>`)
+.addFields(
+{name:"Vouches",value:`${data.vouches}`,inline:true},
+{name:"Reports",value:`${data.reports}`,inline:true},
+{name:"Fake Reports",value:`${data.fakeReports}`,inline:true},
+{name:"Trust Score",value:`${trust}%`,inline:true},
+{name:"Risk Level",value:risk,inline:true}
+)
+.setImage(images.info);
+
+interaction.reply({embeds:[embed]});
+
+}
 
 });
 
