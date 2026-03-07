@@ -19,10 +19,10 @@ const reports = new Collection();
 const fakeReports = new Collection();
 
 const images = {
-  vouch: "https://sdmntpritalynorth.oaiusercontent.com/files/00000000-a0dc-7246-8273-a313b12473d3/raw?se=2026-03-07T21:19:20Z&sp=r&sv=2026-02-06&sr=b&scid=d54849ed-34c6-40cf-9f63-ec9728116b54&skoid=b32d65cd-c8f1-46fb-90df-c208671889d4&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-03-07T06:41:28Z&ske=2026-03-08T06:41:28Z&sks=b&skv=2026-02-06&sig=cJnG8Pk%2B5jc8iHblqlWam3xwQ%2BXudKZy6PEra6ALL6g%3D"
-  report: "https://sdmntpritalynorth.oaiusercontent.com/files/00000000-c0a8-7246-be69-59612575dea0/raw?se=2026-03-07T21:21:59Z&sp=r&sv=2026-02-06&sr=b&scid=3316db01-08a4-481d-8bb1-e04097909541&skoid=b32d65cd-c8f1-46fb-90df-c208671889d4&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-03-07T20:58:40Z&ske=2026-03-08T20:58:40Z&sks=b&skv=2026-02-06&sig=tsZChvzNbjuBSKeCvVK8qvjlYqTai3PWkRAcSYfjtpc%3D"
-  info: "https://sdmntpritalynorth.oaiusercontent.com/files/00000000-bf20-7246-9ed2-27af54dc24f4/raw?se=2026-03-07T21:18:19Z&sp=r&sv=2026-02-06&sr=b&scid=538b6fa6-b33b-414f-96ef-cdc7d1841b4d&skoid=b32d65cd-c8f1-46fb-90df-c208671889d4&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-03-07T07:13:03Z&ske=2026-03-08T07:13:03Z&sks=b&skv=2026-02-06&sig=tkuaiOegn6TvMWg0NjKSHa5J9DljMEaXSMJJDpwPWUw%3D"
-  rep: "https://sdmntpritalynorth.oaiusercontent.com/files/00000000-8818-7246-84a5-4364d35d6d60/raw?se=2026-03-07T21:22:23Z&sp=r&sv=2026-02-06&sr=b&scid=27663fb6-1b3a-4c52-9de3-b2524665860b&skoid=b32d65cd-c8f1-46fb-90df-c208671889d4&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-03-07T06:59:54Z&ske=2026-03-08T06:59:54Z&sks=b&skv=2026-02-06&sig=4SwpuV8IJ9E%2BBiyjwpmo4Ndwv4FKT4%2BZxITjonVCD6c%3D"
+  vouch: "https://media.discordapp.net/attachments/1468414813536518196/1479946564028993687/content.png?ex=69ade324&is=69ac91a4&hm=0080fcd78d34ca9a1623c261bf494f0aff918617b24da88fb694069e3ca98a2a&=&format=webp&quality=lossless&width=1440&height=960",
+  report: "https://media.discordapp.net/attachments/1468414813536518196/1479946580084658226/content.png?ex=69ade328&is=69ac91a8&hm=fab0be86a7014cafdb768e58069f9aa874ee2b613d35aca2ef0a8ccb5fee9012&=&format=webp&quality=lossless&width=1440&height=960",
+  info: "https://media.discordapp.net/attachments/1468414813536518196/1479946427168718929/content.png?ex=69ade304&is=69ac9184&hm=b7a3318b9a93f00258184ef9c1199fcfb7f4765aeedddacb51e1b6ef31290ca4&=&format=webp&quality=lossless&width=1440&height=960",
+  rep: "https://media.discordapp.net/attachments/1468414813536518196/1479946596136259665/content.png?ex=69ade32c&is=69ac91ac&hm=004808584395fb7909404625060268695ead7fcb4df303bd779c9fce9e2b7876&=&format=webp&quality=lossless&width=1440&height=960"
 };
 
 const commands = [
@@ -204,5 +204,3 @@ client.on("interactionCreate", async interaction => {
 });
 
 client.login(process.env.TOKEN);
-
-
