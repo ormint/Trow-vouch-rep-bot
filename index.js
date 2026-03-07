@@ -16,7 +16,6 @@ const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers]
 });
 
-// ==== Şəkil linkləri (öz linklərinlə dəyiş) ====
 const images = {
   vouch: "https://media.discordapp.net/attachments/1468414813536518196/1479946564028993687/content.png?ex=69ade324&is=69ac91a4&hm=0080fcd78d34ca9a1623c261bf494f0aff918617b24da88fb694069e3ca98a2a&=&format=webp&quality=lossless&width=1440&height=960",
   report: "https://media.discordapp.net/attachments/1468414813536518196/1479946580084658226/content.png?ex=69ade328&is=69ac91a8&hm=fab0be86a7014cafdb768e58069f9aa874ee2b613d35aca2ef0a8ccb5fee9012&=&format=webp&quality=lossless&width=1440&height=960",
@@ -24,7 +23,6 @@ const images = {
   rep: "https://media.discordapp.net/attachments/1468414813536518196/1479946596136259665/content.png?ex=69ade32c&is=69ac91ac&hm=004808584395fb7909404625060268695ead7fcb4df303bd779c9fce9e2b7876&=&format=webp&quality=lossless&width=1440&height=960"
 };
 
-// ==== Database table ====
 db.prepare(`
 CREATE TABLE IF NOT EXISTS users (
   userId TEXT PRIMARY KEY,
@@ -36,22 +34,24 @@ CREATE TABLE IF NOT EXISTS users (
 
 function getUser(id) {
   let user = db.prepare("SELECT * FROM users WHERE userId = ?").get(id);
+
   if (!user) {
     db.prepare("INSERT INTO users (userId) VALUES (?)").run(id);
     user = db.prepare("SELECT * FROM users WHERE userId = ?").get(id);
   }
+
   return user;
 }
 
-// ==== Account age check (5 gün) ====
 function isAccountOldEnough(user) {
   const accountAgeDays =
     (Date.now() - user.createdTimestamp) / (1000 * 60 * 60 * 24);
+
   return accountAgeDays >= 5;
 }
 
-// ==== Trust hesabı ====
 function calculateTrust(user, member, data) {
+
   let score = 0;
 
   const accountAgeDays =
@@ -84,8 +84,8 @@ function calculateTrust(user, member, data) {
   return score;
 }
 
-// ==== Slash commands ====
 const commands = [
+
   new SlashCommandBuilder()
     .setName("vouch")
     .setDescription("Give a vouch")
@@ -109,16 +109,23 @@ const commands = [
   new SlashCommandBuilder()
     .setName("info")
     .setDescription("User info")
-    .addUserOption(o => o.setName("user").setDescription("User").setRequired(true))
+    .addUserOption(o => o.setName("user").setDescription("User").setRequired(true)),
+
+  new SlashCommandBuilder()
+    .setName("top")
+    .setDescription("Show top trusted users")
+
 ].map(c => c.toJSON());
 
 const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
 
 (async () => {
+
   await rest.put(
     Routes.applicationCommands(process.env.CLIENT_ID),
     { body: commands }
   );
+
 })();
 
 client.once("ready", () => {
@@ -126,14 +133,41 @@ client.once("ready", () => {
 });
 
 client.on("interactionCreate", async interaction => {
+
   if (!interaction.isChatInputCommand()) return;
+
+  if (interaction.commandName === "top") {
+
+    const users = db.prepare(`
+      SELECT userId, vouches
+      FROM users
+      ORDER BY vouches DESC
+      LIMIT 10
+    `).all();
+
+    if (!users.length) {
+      return interaction.reply("No vouches recorded yet.");
+    }
+
+    let text = "";
+
+    users.forEach((u, index) => {
+      text += `${index + 1}. <@${u.userId}> — ${u.vouches} vouches\n`;
+    });
+
+    const embed = new EmbedBuilder()
+      .setTitle("🏆 Top Trusted Users")
+      .setColor("Gold")
+      .setDescription(text);
+
+    return interaction.reply({ embeds: [embed] });
+  }
 
   const user = interaction.options.getUser("user");
   const member = await interaction.guild.members.fetch(user.id);
 
   getUser(user.id);
 
-  // ===== VOUCH =====
   if (interaction.commandName === "vouch") {
 
     if (!isAccountOldEnough(interaction.user)) {
@@ -166,9 +200,9 @@ client.on("interactionCreate", async interaction => {
       .setImage(images.vouch);
 
     interaction.reply({ embeds: [embed] });
+
   }
 
-  // ===== REP =====
   if (interaction.commandName === "rep") {
 
     const data = getUser(user.id);
@@ -181,9 +215,9 @@ client.on("interactionCreate", async interaction => {
       .setImage(images.rep);
 
     interaction.reply({ embeds: [embed] });
+
   }
 
-  // ===== REPORT =====
   if (interaction.commandName === "report") {
 
     if (!isAccountOldEnough(interaction.user)) {
@@ -209,9 +243,9 @@ client.on("interactionCreate", async interaction => {
       .setImage(images.report);
 
     interaction.reply({ embeds: [embed] });
+
   }
 
-  // ===== FAKE VOUCH =====
   if (interaction.commandName === "fakevouch") {
 
     if (!isAccountOldEnough(interaction.user)) {
@@ -237,12 +271,13 @@ client.on("interactionCreate", async interaction => {
       .setImage(images.report);
 
     interaction.reply({ embeds: [embed] });
+
   }
 
-  // ===== INFO =====
   if (interaction.commandName === "info") {
 
     const data = getUser(user.id);
+
     const trust = calculateTrust(user, member, data);
 
     let risk = "🔴 High Risk";
@@ -263,6 +298,7 @@ client.on("interactionCreate", async interaction => {
       .setImage(images.info);
 
     interaction.reply({ embeds: [embed] });
+
   }
 
 });
