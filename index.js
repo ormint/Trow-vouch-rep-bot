@@ -19,10 +19,10 @@ const reports = new Collection();
 const fakeReports = new Collection();
 
 const images = {
-  vouch: "VOUCH_IMAGE_LINK",
-  report: "REPORTED_IMAGE_LINK",
-  info: "INFO_IMAGE_LINK",
-  rep: "REPUTATED_IMAGE_LINK"
+  vouch: "https://sdmntpritalynorth.oaiusercontent.com/files/00000000-a0dc-7246-8273-a313b12473d3/raw?se=2026-03-07T21:10:03Z&sp=r&sv=2026-02-06&sr=b&scid=e0c7ce93-8444-47e8-93ef-2dd760ad9bad&skoid=b32d65cd-c8f1-46fb-90df-c208671889d4&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-03-07T07:40:05Z&ske=2026-03-08T07:40:05Z&sks=b&skv=2026-02-06&sig=TJGsihZUfE1nTDiQUfoNh5f84yPLlS/hbpLy8ZopiyI%3D",
+  report: "https://sdmntpritalynorth.oaiusercontent.com/files/00000000-c0a8-7246-be69-59612575dea0/raw?se=2026-03-07T21:09:36Z&sp=r&sv=2026-02-06&sr=b&scid=ace6a1ca-40f7-437a-9b04-c63b300e8c28&skoid=b32d65cd-c8f1-46fb-90df-c208671889d4&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-03-07T20:18:24Z&ske=2026-03-08T20:18:24Z&sks=b&skv=2026-02-06&sig=kyGcifjWkrqMUFUJAEh0AkYdtF8jIj0S3elOO0PtHQQ%3D",
+  info: "https://sdmntpritalynorth.oaiusercontent.com/files/00000000-bf20-7246-9ed2-27af54dc24f4/raw?se=2026-03-07T21:08:55Z&sp=r&sv=2026-02-06&sr=b&scid=571abab6-75c7-4c13-a162-bde537e605bc&skoid=b32d65cd-c8f1-46fb-90df-c208671889d4&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-03-07T05:08:48Z&ske=2026-03-08T05:08:48Z&sks=b&skv=2026-02-06&sig=tRtbcjIMoFu4x3g5oJUzOS4lvIhTy8CLbhHlWOru1l8%3D",
+  rep: "https://sdmntpritalynorth.oaiusercontent.com/files/00000000-8818-7246-84a5-4364d35d6d60/raw?se=2026-03-07T21:10:46Z&sp=r&sv=2026-02-06&sr=b&scid=d2ea18ef-8656-4626-8ae1-bafa776a5567&skoid=b32d65cd-c8f1-46fb-90df-c208671889d4&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-03-07T20:58:47Z&ske=2026-03-08T20:58:47Z&sks=b&skv=2026-02-06&sig=cxdSwkRXgzUpRbAgsrb1%2BcZwwUfCa4Sz%2Bow3Q31S9VY%3D"
 };
 
 const commands = [
@@ -202,3 +202,4 @@ client.on("interactionCreate", async interaction => {
 });
 
 client.login(process.env.TOKEN);
+
