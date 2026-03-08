@@ -14,7 +14,7 @@ const Database = require("better-sqlite3");
 const db = new Database("database.db");
 
 const client = new Client({
-intents:[GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers]
+intents:[GatewayIntentBits.Guilds,GatewayIntentBits.GuildMembers]
 });
 
 const DISCLAIMER =
@@ -67,7 +67,7 @@ const commands=[
 
 new SlashCommandBuilder()
 .setName("help")
-.setDescription("Show Divine commands"),
+.setDescription("Show Divine bot commands"),
 
 new SlashCommandBuilder()
 .setName("vouch")
@@ -91,6 +91,14 @@ o.setName("user")
 .addStringOption(o=>
 o.setName("reason")
 .setDescription("Reason")
+.setRequired(true)),
+
+new SlashCommandBuilder()
+.setName("fakevouch")
+.setDescription("Report fake vouch")
+.addUserOption(o=>
+o.setName("user")
+.setDescription("User")
 .setRequired(true)),
 
 new SlashCommandBuilder()
@@ -139,15 +147,13 @@ o.setName("channel")
 const rest=new REST({version:"10"}).setToken(process.env.TOKEN);
 
 (async()=>{
-
 await rest.put(
 Routes.applicationCommands(process.env.CLIENT_ID),
 {body:commands}
 );
-
 })();
 
-client.once("ready",()=>{
+client.once("clientReady",()=>{
 console.log(`Divine bot ready: ${client.user.tag}`);
 });
 
@@ -156,6 +162,28 @@ client.on("interactionCreate",async interaction=>{
 if(!interaction.isChatInputCommand()) return;
 
 const cmd=interaction.commandName;
+
+if(cmd==="help"){
+
+return interaction.reply({
+embeds:[
+new EmbedBuilder()
+.setTitle("✨ Divine Trust Bot")
+.setDescription("Available Commands")
+.addFields(
+{name:"🤝 /vouch user message",value:"Give a vouch after a successful trade."},
+{name:"🚨 /report user reason",value:"Report a scammer."},
+{name:"⚠ /fakevouch user",value:"Report fake vouch."},
+{name:"👤 /info user",value:"User profile."},
+{name:"📊 /rep user",value:"Check vouches."},
+{name:"🏆 /top",value:"Top trusted users."},
+{name:"📉 /topreports",value:"Most reported users."},
+{name:"⚙ /setlog",value:"Set log channel."}
+)
+.setColor(0x5865F2)
+]
+});
+}
 
 if(cmd==="setlog"){
 
@@ -167,25 +195,6 @@ INSERT OR REPLACE INTO logs VALUES (?,?)
 `).run(type,channel.id);
 
 return interaction.reply(`✅ Log channel set to ${channel}`);
-}
-
-if(cmd==="help"){
-
-return interaction.reply({
-embeds:[
-new EmbedBuilder()
-.setTitle("✨ Divine Trust Bot")
-.addFields(
-{name:"/vouch",value:"Give vouch"},
-{name:"/report",value:"Report scammer"},
-{name:"/info",value:"User profile"},
-{name:"/rep",value:"Check reputation"},
-{name:"/top",value:"Top trusted users"},
-{name:"/topreports",value:"Most reported users"}
-)
-.setColor(0x5865F2)
-]
-});
 }
 
 if(cmd==="vouch"){
@@ -264,6 +273,25 @@ new EmbedBuilder()
 });
 }
 
+if(cmd==="rep"){
+
+const user=interaction.options.getUser("user");
+const data=getUser(user.id);
+
+return interaction.reply({
+embeds:[
+new EmbedBuilder()
+.setTitle("User Reputation")
+.setDescription(`<@${user.id}>`)
+.addFields(
+{name:"Total Vouches",value:`${data.vouches}`}
+)
+.setImage(images.rep)
+.setColor("Blue")
+]
+});
+}
+
 if(cmd==="top"){
 
 const users=db.prepare(`
@@ -277,6 +305,8 @@ let text="";
 users.forEach((u,i)=>{
 text+=`${i+1}. <@${u.userId}> — ${u.vouches} vouches\n`;
 });
+
+if(text==="") text="No users yet.";
 
 return interaction.reply({
 embeds:[
@@ -301,6 +331,8 @@ let text="";
 users.forEach((u,i)=>{
 text+=`${i+1}. <@${u.userId}> — ${u.reports} reports\n`;
 });
+
+if(text==="") text="No reports yet.";
 
 return interaction.reply({
 embeds:[
