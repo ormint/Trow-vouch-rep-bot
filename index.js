@@ -126,6 +126,10 @@ return score;
 const commands=[
 
 new SlashCommandBuilder()
+.setName("help")
+.setDescription("Show Divine bot commands"),
+
+new SlashCommandBuilder()
 .setName("vouch")
 .setDescription("Give a vouch")
 .addUserOption(o=>
@@ -220,78 +224,43 @@ Routes.applicationCommands(process.env.CLIENT_ID),
 })();
 
 client.once("ready",()=>{
-console.log(`Bot ready: ${client.user.tag}`);
+console.log(`Divine bot ready: ${client.user.tag}`);
 });
 
 client.on("interactionCreate",async interaction=>{
 
 if(!interaction.isChatInputCommand()) return;
 
-if(interaction.commandName==="setlog"){
+if(interaction.commandName==="help"){
 
-const type=interaction.options.getString("type");
-const channel=interaction.options.getChannel("channel");
-
-db.prepare(`INSERT OR REPLACE INTO logs VALUES (?,?)`)
-.run(type,channel.id);
-
-return interaction.reply(`Log channel set to ${channel}`);
-
-}
-
-if(interaction.commandName==="top"){
-
-const users=db.prepare(`
-SELECT userId,vouches FROM users
-ORDER BY vouches DESC
-LIMIT 10
-`).all();
-
-let text="";
-
-users.forEach((u,i)=>{
-text+=`${i+1}. <@${u.userId}> — ${u.vouches} vouches\n`;
-});
-
-return interaction.reply({
+interaction.reply({
 embeds:[
 new EmbedBuilder()
-.setTitle("🏆 Top Trusted Users")
-.setDescription(text)
-.setColor("Gold")
-]
-});
+.setTitle("✨ Divine Trust Bot")
+.setDescription("Available Commands")
+.addFields(
 
-}
+{name:"🤝 /vouch user message",value:"Give a vouch after a successful trade."},
+{name:"🚨 /report user reason",value:"Report a scammer with a reason."},
+{name:"⚠ /fakevouch user",value:"Report fake vouch activity."},
+{name:"👤 /info user",value:"View user trust profile."},
+{name:"📊 /rep user",value:"Check user's total vouches."},
+{name:"🏆 /top",value:"Show most trusted users."},
+{name:"📉 /topreports",value:"Show most reported users."},
+{name:"⚙ /setlog",value:"Set log channels."}
 
-if(interaction.commandName==="topreports"){
-
-const users=db.prepare(`
-SELECT userId,reports FROM users
-ORDER BY reports DESC
-LIMIT 10
-`).all();
-
-let text="";
-
-users.forEach((u,i)=>{
-text+=`${i+1}. <@${u.userId}> — ${u.reports} reports\n`;
-});
-
-return interaction.reply({
-embeds:[
-new EmbedBuilder()
-.setTitle("⚠ Most Reported Users")
-.setDescription(text)
-.setColor("Red")
+)
+.setThumbnail(client.user.displayAvatarURL())
+.setColor(0x5865F2)
 ]
 });
 
 }
 
 const user=interaction.options.getUser("user");
-const member=await interaction.guild.members.fetch(user.id);
+if(!user) return;
 
+const member=await interaction.guild.members.fetch(user.id);
 getUser(user.id);
 
 if(interaction.commandName==="vouch"){
@@ -336,34 +305,11 @@ new EmbedBuilder()
 ]
 });
 
-const log=getLogChannel("vouch",interaction.guild);
-
-if(log){
-
-log.send({
-embeds:[
-new EmbedBuilder()
-.setTitle("Vouch Log")
-.addFields(
-{name:"User",value:`<@${interaction.user.id}>`,inline:true},
-{name:"Target",value:`<@${user.id}>`,inline:true},
-{name:"Message",value:message}
-)
-.setTimestamp()
-.setColor("Green")
-]
-});
-
-}
-
 }
 
 if(interaction.commandName==="report"){
 
 const reason=interaction.options.getString("reason");
-
-if(!isAccountOldEnough(interaction.user))
-return interaction.reply({content:"Account must be 5 days old",ephemeral:true});
 
 db.prepare(`UPDATE users SET reports=reports+1 WHERE userId=?`)
 .run(user.id);
@@ -388,26 +334,6 @@ new EmbedBuilder()
 .setColor("Red")
 ]
 });
-
-const log=getLogChannel("report",interaction.guild);
-
-if(log){
-
-log.send({
-embeds:[
-new EmbedBuilder()
-.setTitle("Report Log")
-.addFields(
-{name:"Reporter",value:`<@${interaction.user.id}>`,inline:true},
-{name:"Target",value:`<@${user.id}>`,inline:true},
-{name:"Reason",value:reason}
-)
-.setTimestamp()
-.setColor("Red")
-]
-});
-
-}
 
 }
 
@@ -451,4 +377,4 @@ new EmbedBuilder()
 
 });
 
-client.login(process.env.TOKEN);  
+client.login(process.env.TOKEN);
