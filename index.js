@@ -14,13 +14,13 @@ const Database = require("better-sqlite3");
 const db = new Database("database.db");
 
 const client = new Client({
-intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers]
+intents:[GatewayIntentBits.Guilds,GatewayIntentBits.GuildMembers]
 });
 
 const DISCLAIMER =
 "⚠ This bot does not guarantee trust. Always trade at your own risk.";
 
-const images = {
+const images={
 vouch:"https://media.discordapp.net/attachments/1468414813536518196/1479946564028993687/content.png?ex=69ade324&is=69ac91a4&hm=0080fcd78d34ca9a1623c261bf494f0aff918617b24da88fb694069e3ca98a2a&=&format=webp&quality=lossless&width=1440&height=960",
 report:"https://media.discordapp.net/attachments/1468414813536518196/1479946580084658226/content.png?ex=69ade328&is=69ac91a8&hm=fab0be86a7014cafdb768e58069f9aa874ee2b613d35aca2ef0a8ccb5fee9012&=&format=webp&quality=lossless&width=1440&height=960",
 info:"https://media.discordapp.net/attachments/1468414813536518196/1479946427168718929/content.png?ex=69ade304&is=69ac9184&hm=b7a3318b9a93f00258184ef9c1199fcfb7f4765aeedddacb51e1b6ef31290ca4&=&format=webp&quality=lossless&width=1440&height=960",
@@ -40,7 +40,21 @@ db.prepare(`
 CREATE TABLE IF NOT EXISTS vouchers (
 fromUser TEXT,
 toUser TEXT,
-PRIMARY KEY (fromUser,toUser)
+message TEXT
+)
+`).run();
+
+db.prepare(`
+CREATE TABLE IF NOT EXISTS reports (
+fromUser TEXT,
+toUser TEXT
+)
+`).run();
+
+db.prepare(`
+CREATE TABLE IF NOT EXISTS fakeReports (
+fromUser TEXT,
+toUser TEXT
 )
 `).run();
 
@@ -120,16 +134,12 @@ new SlashCommandBuilder()
 .setDescription("Give a vouch")
 .addUserOption(o=>
 o.setName("user")
-.setDescription("User to vouch")
+.setDescription("User")
 .setRequired(true)
-),
-
-new SlashCommandBuilder()
-.setName("rep")
-.setDescription("Check reputation")
-.addUserOption(o=>
-o.setName("user")
-.setDescription("User to check")
+)
+.addStringOption(o=>
+o.setName("message")
+.setDescription("Vouch message")
 .setRequired(true)
 ),
 
@@ -138,13 +148,22 @@ new SlashCommandBuilder()
 .setDescription("Report scammer")
 .addUserOption(o=>
 o.setName("user")
-.setDescription("User to report")
+.setDescription("User")
 .setRequired(true)
 ),
 
 new SlashCommandBuilder()
 .setName("fakevouch")
 .setDescription("Report fake vouch")
+.addUserOption(o=>
+o.setName("user")
+.setDescription("User")
+.setRequired(true)
+),
+
+new SlashCommandBuilder()
+.setName("rep")
+.setDescription("Check reputation")
 .addUserOption(o=>
 o.setName("user")
 .setDescription("User")
@@ -183,7 +202,7 @@ o.setName("type")
 ))
 .addChannelOption(o=>
 o.setName("channel")
-.setDescription("Log channel")
+.setDescription("Channel")
 .setRequired(true))
 
 ].map(c=>c.toJSON());
@@ -212,9 +231,8 @@ if(interaction.commandName==="setlog"){
 const type=interaction.options.getString("type");
 const channel=interaction.options.getChannel("channel");
 
-db.prepare(`
-INSERT OR REPLACE INTO logs VALUES (?,?)
-`).run(type,channel.id);
+db.prepare(`INSERT OR REPLACE INTO logs VALUES (?,?)`)
+.run(type,channel.id);
 
 return interaction.reply(`Log channel set: ${channel}`);
 
@@ -234,12 +252,14 @@ users.forEach((u,i)=>{
 text+=`${i+1}. <@${u.userId}> — ${u.vouches} vouches\n`;
 });
 
-const embed=new EmbedBuilder()
+return interaction.reply({
+embeds:[
+new EmbedBuilder()
 .setTitle("🏆 Top Trusted Users")
+.setDescription(text)
 .setColor("Gold")
-.setDescription(text);
-
-return interaction.reply({embeds:[embed]});
+]
+});
 
 }
 
@@ -257,12 +277,14 @@ users.forEach((u,i)=>{
 text+=`${i+1}. <@${u.userId}> — ${u.reports} reports\n`;
 });
 
-const embed=new EmbedBuilder()
+return interaction.reply({
+embeds:[
+new EmbedBuilder()
 .setTitle("⚠ Most Reported Users")
+.setDescription(text)
 .setColor("Red")
-.setDescription(text);
-
-return interaction.reply({embeds:[embed]});
+]
+});
 
 }
 
@@ -279,6 +301,8 @@ return interaction.reply({content:"Account must be 5 days old",ephemeral:true});
 if(user.id===interaction.user.id)
 return interaction.reply({content:"You cannot vouch yourself",ephemeral:true});
 
+const message=interaction.options.getString("message");
+
 const already=db.prepare(`
 SELECT * FROM vouchers
 WHERE fromUser=? AND toUser=?
@@ -287,41 +311,28 @@ WHERE fromUser=? AND toUser=?
 if(already)
 return interaction.reply({content:"You already vouched this user",ephemeral:true});
 
-db.prepare(`UPDATE users SET vouches=vouches+1 WHERE userId=?`).run(user.id);
-db.prepare(`INSERT INTO vouchers VALUES (?,?)`).run(interaction.user.id,user.id);
+db.prepare(`UPDATE users SET vouches=vouches+1 WHERE userId=?`)
+.run(user.id);
+
+db.prepare(`
+INSERT INTO vouchers VALUES (?,?,?)
+`).run(interaction.user.id,user.id,message);
 
 const data=getUser(user.id);
 
-const embed=new EmbedBuilder()
+interaction.reply({
+embeds:[
+new EmbedBuilder()
 .setTitle("Vouch Added")
-.setColor("Green")
 .setDescription(`<@${user.id}> received a vouch`)
-.addFields({name:"Total Vouches",value:`${data.vouches}`})
-.setImage(images.vouch)
-.setFooter({text:DISCLAIMER});
-
-interaction.reply({embeds:[embed]});
-
-}
-
-if(interaction.commandName==="report"){
-
-if(!isAccountOldEnough(interaction.user))
-return interaction.reply({content:"Account must be 5 days old",ephemeral:true});
-
-db.prepare(`UPDATE users SET reports=reports+1 WHERE userId=?`).run(user.id);
-
-const data=getUser(user.id);
-
-const embed=new EmbedBuilder()
-.setTitle("User Reported")
-.setColor("Red")
-.setDescription(`<@${user.id}> reported`)
-.addFields({name:"Reports",value:`${data.reports}`})
-.setImage(images.report)
-.setFooter({text:DISCLAIMER});
-
-interaction.reply({embeds:[embed]});
+.addFields(
+{name:"Message",value:message},
+{name:"Total Vouches",value:`${data.vouches}`}
+)
+.setFooter({text:DISCLAIMER})
+.setColor("Green")
+]
+});
 
 }
 
@@ -334,7 +345,40 @@ let risk="🔴 High Risk";
 if(trust>=80) risk="🟢 Low Risk";
 else if(trust>=50) risk="🟡 Medium Risk";
 
-const embed=new EmbedBuilder()
+if(data.reports>=50 && data.vouches<50)
+risk="🚨 Potential Scammer";
+
+const recentVouches=db.prepare(`
+SELECT fromUser,message
+FROM vouchers
+WHERE toUser=?
+ORDER BY rowid DESC
+LIMIT 10
+`).all(user.id);
+
+const recentReports=db.prepare(`
+SELECT fromUser
+FROM reports
+WHERE toUser=?
+ORDER BY rowid DESC
+LIMIT 10
+`).all(user.id);
+
+const recentFake=db.prepare(`
+SELECT fromUser
+FROM fakeReports
+WHERE toUser=?
+ORDER BY rowid DESC
+LIMIT 10
+`).all(user.id);
+
+const vouchText=recentVouches.map(v=>`<@${v.fromUser}>: ${v.message}`).join("\n") || "None";
+const reportText=recentReports.map(r=>`<@${r.fromUser}> reported`).join("\n") || "None";
+const fakeText=recentFake.map(r=>`<@${r.fromUser}> reported`).join("\n") || "None";
+
+interaction.reply({
+embeds:[
+new EmbedBuilder()
 .setTitle("User Info")
 .setDescription(`<@${user.id}>`)
 .addFields(
@@ -342,12 +386,15 @@ const embed=new EmbedBuilder()
 {name:"Reports",value:`${data.reports}`,inline:true},
 {name:"Fake Vouch Reports",value:`${data.fakeReports}`,inline:true},
 {name:"Trust Score",value:`${trust}%`,inline:true},
-{name:"Risk Level",value:risk,inline:true}
+{name:"Risk Level",value:risk,inline:true},
+{name:"Recent Vouches",value:vouchText},
+{name:"Recent Reports",value:reportText},
+{name:"Recent Fake Vouch Reports",value:fakeText}
 )
-.setImage(images.info)
-.setFooter({text:DISCLAIMER});
-
-interaction.reply({embeds:[embed]});
+.setFooter({text:DISCLAIMER})
+.setColor(0x3498db)
+]
+});
 
 }
 
