@@ -23,8 +23,8 @@ const DISCLAIMER =
 const images = {
 vouch:"https://media.discordapp.net/attachments/1468414813536518196/1479946564028993687/content.png?ex=69ade324&is=69ac91a4&hm=0080fcd78d34ca9a1623c261bf494f0aff918617b24da88fb694069e3ca98a2a&=&format=webp&quality=lossless&width=1286&height=858",
 report:"https://media.discordapp.net/attachments/1468414813536518196/1479946580084658226/content.png?ex=69ade328&is=69ac91a8&hm=fab0be86a7014cafdb768e58069f9aa874ee2b613d35aca2ef0a8ccb5fee9012&=&format=webp&quality=lossless&width=1286&height=858",
-info:"https://media.discordapp.net/attachments/1468414813536518196/1479946427168718929/content.png?ex=69ade304&is=69ac9184&hm=b7a3318b9a93f00258184ef9c1199fcfb7f4765aeedddacb51e1b6ef31290ca4&=&format=webp&quality=lossless&width=440&height=293",
-rep:"https://media.discordapp.net/attachments/1468414813536518196/1479946596136259665/content.png?ex=69ade32c&is=69ac91ac&hm=004808584395fb7909404625060268695ead7fcb4df303bd779c9fce9e2b7876&=&format=webp&quality=lossless&width=440&height=293"
+info:"https://media.discordapp.net/attachments/1468414813536518196/1479946427168718929/content.png?ex=69ade304&is=69ac9184&hm=b7a3318b9a93f00258184ef9c1199fcfb7f4765aeedddacb51e1b6ef31290ca4&=&format=webp&quality=lossless&width=1286&height=858",
+rep:"https://media.discordapp.net/attachments/1468414813536518196/1479946596136259665/content.png?ex=69ade32c&is=69ac91ac&hm=004808584395fb7909404625060268695ead7fcb4df303bd779c9fce9e2b7876&=&format=webp&quality=lossless&width=1286&height=858"
 };
 
 db.prepare(`
@@ -53,13 +53,6 @@ reason TEXT
 `).run();
 
 db.prepare(`
-CREATE TABLE IF NOT EXISTS fakeReports (
-fromUser TEXT,
-toUser TEXT
-)
-`).run();
-
-db.prepare(`
 CREATE TABLE IF NOT EXISTS logs (
 type TEXT PRIMARY KEY,
 channelId TEXT
@@ -77,47 +70,36 @@ user=db.prepare("SELECT * FROM users WHERE userId=?").get(id);
 return user;
 }
 
-function getLogChannel(type,guild){
-const row=db.prepare("SELECT channelId FROM logs WHERE type=?").get(type);
-if(!row) return null;
-return guild.channels.cache.get(row.channelId);
-}
-
-function isAccountOldEnough(user){
-const days=(Date.now()-user.createdTimestamp)/(1000*60*60*24);
-return days>=5;
-}
-
 const commands=[
 
-new SlashCommandBuilder().setName("help").setDescription("Show Divine bot commands"),
+new SlashCommandBuilder().setName("help").setDescription("Show Divine commands"),
 
 new SlashCommandBuilder()
 .setName("vouch")
 .setDescription("Give a vouch")
-.addUserOption(o=>o.setName("user").setDescription("User").setRequired(true))
-.addStringOption(o=>o.setName("message").setDescription("Message").setRequired(true)),
+.addUserOption(o=>o.setName("user").setRequired(true))
+.addStringOption(o=>o.setName("message").setRequired(true)),
 
 new SlashCommandBuilder()
 .setName("report")
 .setDescription("Report scammer")
-.addUserOption(o=>o.setName("user").setDescription("User").setRequired(true))
-.addStringOption(o=>o.setName("reason").setDescription("Reason").setRequired(true)),
+.addUserOption(o=>o.setName("user").setRequired(true))
+.addStringOption(o=>o.setName("reason").setRequired(true)),
 
 new SlashCommandBuilder()
 .setName("fakevouch")
 .setDescription("Report fake vouch")
-.addUserOption(o=>o.setName("user").setDescription("User").setRequired(true)),
+.addUserOption(o=>o.setName("user").setRequired(true)),
 
 new SlashCommandBuilder()
 .setName("rep")
 .setDescription("Check reputation")
-.addUserOption(o=>o.setName("user").setDescription("User").setRequired(true)),
+.addUserOption(o=>o.setName("user").setRequired(true)),
 
 new SlashCommandBuilder()
 .setName("info")
 .setDescription("User info")
-.addUserOption(o=>o.setName("user").setDescription("User").setRequired(true)),
+.addUserOption(o=>o.setName("user").setRequired(true)),
 
 new SlashCommandBuilder().setName("top").setDescription("Top trusted users"),
 new SlashCommandBuilder().setName("topreports").setDescription("Most reported users"),
@@ -128,14 +110,12 @@ new SlashCommandBuilder()
 .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
 .addStringOption(o=>
 o.setName("type")
-.setDescription("Log type")
 .setRequired(true)
 .addChoices(
 {name:"vouch",value:"vouch"},
-{name:"report",value:"report"},
-{name:"fake",value:"fake"}
+{name:"report",value:"report"}
 ))
-.addChannelOption(o=>o.setName("channel").setDescription("Channel").setRequired(true))
+.addChannelOption(o=>o.setName("channel").setRequired(true))
 
 ].map(c=>c.toJSON());
 
@@ -156,22 +136,24 @@ client.on("interactionCreate",async interaction=>{
 
 if(!interaction.isChatInputCommand()) return;
 
+await interaction.deferReply();
+
 const cmd=interaction.commandName;
 
 if(cmd==="help"){
-return interaction.reply({
+return interaction.editReply({
 embeds:[
 new EmbedBuilder()
 .setTitle("✨ Divine Trust Bot")
-.setDescription("Available Commands")
+.setDescription("Commands")
 .addFields(
-{name:"/vouch user message",value:"Give a vouch after trade"},
-{name:"/report user reason",value:"Report scammer"},
-{name:"/fakevouch user",value:"Report fake vouch"},
-{name:"/rep user",value:"Check reputation"},
-{name:"/info user",value:"User trust profile"},
+{name:"/vouch",value:"Give vouch after trade"},
+{name:"/report",value:"Report scammer"},
+{name:"/fakevouch",value:"Report fake vouch"},
+{name:"/rep",value:"Check reputation"},
+{name:"/info",value:"User trust profile"},
 {name:"/top",value:"Top trusted users"},
-{name:"/topreports",value:"Most reported users"},
+{name:"/topreports",value:"Most reported"},
 {name:"/setlog",value:"Set log channels"}
 )
 .setThumbnail(client.user.displayAvatarURL())
@@ -181,40 +163,32 @@ new EmbedBuilder()
 }
 
 if(cmd==="setlog"){
+
 const type=interaction.options.getString("type");
 const channel=interaction.options.getChannel("channel");
 
-db.prepare(`INSERT OR REPLACE INTO logs VALUES (?,?)`).run(type,channel.id);
+db.prepare(`
+INSERT OR REPLACE INTO logs VALUES (?,?)
+`).run(type,channel.id);
 
-return interaction.reply({
-content:`✅ Log channel set to ${channel}`,
-ephemeral:true
-});
+return interaction.editReply(`✅ Log channel set to ${channel}`);
 }
 
 const user=interaction.options.getUser("user");
-if(!user) return;
-
-getUser(user.id);
 
 if(cmd==="vouch"){
 
 const message=interaction.options.getString("message");
 
-if(user.id===interaction.user.id)
-return interaction.reply({content:"You cannot vouch yourself",ephemeral:true});
-
-if(!isAccountOldEnough(interaction.user))
-return interaction.reply({content:"Account must be 5 days old",ephemeral:true});
-
-db.prepare(`UPDATE users SET vouches=vouches+1 WHERE userId=?`).run(user.id);
+db.prepare(`UPDATE users SET vouches=vouches+1 WHERE userId=?`)
+.run(user.id);
 
 db.prepare(`INSERT INTO vouchers VALUES (?,?,?)`)
 .run(interaction.user.id,user.id,message);
 
 const data=getUser(user.id);
 
-return interaction.reply({
+return interaction.editReply({
 embeds:[
 new EmbedBuilder()
 .setTitle("Vouch Added")
@@ -224,8 +198,8 @@ new EmbedBuilder()
 {name:"Total Vouches",value:`${data.vouches}`}
 )
 .setImage(images.vouch)
-.setColor("Green")
 .setFooter({text:DISCLAIMER})
+.setColor("Green")
 ]
 });
 }
@@ -234,13 +208,15 @@ if(cmd==="report"){
 
 const reason=interaction.options.getString("reason");
 
-db.prepare(`UPDATE users SET reports=reports+1 WHERE userId=?`).run(user.id);
+db.prepare(`UPDATE users SET reports=reports+1 WHERE userId=?`)
+.run(user.id);
+
 db.prepare(`INSERT INTO reports VALUES (?,?,?)`)
 .run(interaction.user.id,user.id,reason);
 
 const data=getUser(user.id);
 
-return interaction.reply({
+return interaction.editReply({
 embeds:[
 new EmbedBuilder()
 .setTitle("User Reported")
@@ -250,8 +226,8 @@ new EmbedBuilder()
 {name:"Reports",value:`${data.reports}`}
 )
 .setImage(images.report)
-.setColor("Red")
 .setFooter({text:DISCLAIMER})
+.setColor("Red")
 ]
 });
 }
@@ -263,7 +239,7 @@ db.prepare(`UPDATE users SET fakeReports=fakeReports+1 WHERE userId=?`)
 
 const data=getUser(user.id);
 
-return interaction.reply({
+return interaction.editReply({
 embeds:[
 new EmbedBuilder()
 .setTitle("Fake Vouch Report")
@@ -279,7 +255,7 @@ if(cmd==="rep"){
 
 const data=getUser(user.id);
 
-return interaction.reply({
+return interaction.editReply({
 embeds:[
 new EmbedBuilder()
 .setTitle("User Reputation")
@@ -295,7 +271,7 @@ if(cmd==="info"){
 
 const data=getUser(user.id);
 
-return interaction.reply({
+return interaction.editReply({
 embeds:[
 new EmbedBuilder()
 .setTitle(`${user.username}'s Profile`)
@@ -326,7 +302,7 @@ users.forEach((u,i)=>{
 text+=`${i+1}. <@${u.userId}> — ${u.vouches} vouches\n`;
 });
 
-return interaction.reply({
+return interaction.editReply({
 embeds:[
 new EmbedBuilder()
 .setTitle("🏆 Top Trusted Users")
@@ -350,7 +326,7 @@ users.forEach((u,i)=>{
 text+=`${i+1}. <@${u.userId}> — ${u.reports} reports\n`;
 });
 
-return interaction.reply({
+return interaction.editReply({
 embeds:[
 new EmbedBuilder()
 .setTitle("⚠ Most Reported Users")
