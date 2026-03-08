@@ -36,6 +36,36 @@ fakeReports INTEGER DEFAULT 0
 )
 `).run();
 
+db.prepare(`
+CREATE TABLE IF NOT EXISTS vouchers (
+fromUser TEXT,
+toUser TEXT,
+message TEXT
+)
+`).run();
+
+db.prepare(`
+CREATE TABLE IF NOT EXISTS reports (
+fromUser TEXT,
+toUser TEXT,
+reason TEXT
+)
+`).run();
+
+db.prepare(`
+CREATE TABLE IF NOT EXISTS fakeReports (
+fromUser TEXT,
+toUser TEXT
+)
+`).run();
+
+db.prepare(`
+CREATE TABLE IF NOT EXISTS logs (
+type TEXT PRIMARY KEY,
+channelId TEXT
+)
+`).run();
+
 function getUser(id){
 
 let user=db.prepare("SELECT * FROM users WHERE userId=?").get(id);
@@ -49,22 +79,66 @@ return user;
 
 }
 
+function getLogChannel(type,guild){
+
+const row=db.prepare("SELECT channelId FROM logs WHERE type=?").get(type);
+if(!row) return null;
+
+return guild.channels.cache.get(row.channelId);
+
+}
+
+function isAccountOldEnough(user){
+
+const days=(Date.now()-user.createdTimestamp)/(1000*60*60*24);
+return days>=5;
+
+}
+
+function calculateTrust(user,member,data){
+
+let score=0;
+
+const accDays=(Date.now()-user.createdTimestamp)/(1000*60*60*24);
+
+if(accDays>365) score+=40;
+else if(accDays>180) score+=30;
+else if(accDays>30) score+=20;
+else score+=10;
+
+const joinDays=(Date.now()-member.joinedTimestamp)/(1000*60*60*24);
+
+if(joinDays>180) score+=30;
+else if(joinDays>30) score+=20;
+else if(joinDays>7) score+=10;
+else score+=5;
+
+score -= data.reports*10;
+score -= data.fakeReports*15;
+
+if(score<0) score=0;
+if(score>100) score=100;
+
+return score;
+
+}
+
 const commands=[
 
 new SlashCommandBuilder()
 .setName("help")
-.setDescription("Show Divine commands"),
+.setDescription("Show Divine bot commands"),
 
 new SlashCommandBuilder()
 .setName("vouch")
 .setDescription("Give a vouch")
-.addUserOption(option=>
-option.setName("user")
-.setDescription("User to vouch")
+.addUserOption(o=>
+o.setName("user")
+.setDescription("User")
 .setRequired(true)
 )
-.addStringOption(option=>
-option.setName("message")
+.addStringOption(o=>
+o.setName("message")
 .setDescription("Vouch message")
 .setRequired(true)
 ),
@@ -72,41 +146,41 @@ option.setName("message")
 new SlashCommandBuilder()
 .setName("report")
 .setDescription("Report scammer")
-.addUserOption(option=>
-option.setName("user")
-.setDescription("User to report")
+.addUserOption(o=>
+o.setName("user")
+.setDescription("User")
 .setRequired(true)
 )
-.addStringOption(option=>
-option.setName("reason")
-.setDescription("Reason for report")
+.addStringOption(o=>
+o.setName("reason")
+.setDescription("Reason")
 .setRequired(true)
 ),
 
 new SlashCommandBuilder()
 .setName("fakevouch")
 .setDescription("Report fake vouch")
-.addUserOption(option=>
-option.setName("user")
-.setDescription("User with fake vouch")
-.setRequired(true)
-),
-
-new SlashCommandBuilder()
-.setName("rep")
-.setDescription("Check user reputation")
-.addUserOption(option=>
-option.setName("user")
-.setDescription("User to check")
+.addUserOption(o=>
+o.setName("user")
+.setDescription("User")
 .setRequired(true)
 ),
 
 new SlashCommandBuilder()
 .setName("info")
-.setDescription("Show user info")
-.addUserOption(option=>
-option.setName("user")
-.setDescription("User to show")
+.setDescription("User info")
+.addUserOption(o=>
+o.setName("user")
+.setDescription("User")
+.setRequired(true)
+),
+
+new SlashCommandBuilder()
+.setName("rep")
+.setDescription("Check reputation")
+.addUserOption(o=>
+o.setName("user")
+.setDescription("User")
 .setRequired(true)
 ),
 
@@ -122,20 +196,19 @@ new SlashCommandBuilder()
 .setName("setlog")
 .setDescription("Set log channel")
 .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-.addStringOption(option=>
-option.setName("type")
+.addStringOption(o=>
+o.setName("type")
 .setDescription("Log type")
 .setRequired(true)
 .addChoices(
 {name:"vouch",value:"vouch"},
-{name:"report",value:"report"}
-)
-)
-.addChannelOption(option=>
-option.setName("channel")
+{name:"report",value:"report"},
+{name:"fake",value:"fake"}
+))
+.addChannelOption(o=>
+o.setName("channel")
 .setDescription("Channel")
-.setRequired(true)
-)
+.setRequired(true))
 
 ].map(c=>c.toJSON());
 
@@ -158,62 +231,74 @@ client.on("interactionCreate",async interaction=>{
 
 if(!interaction.isChatInputCommand()) return;
 
-await interaction.deferReply();
+if(interaction.commandName==="help"){
 
-const cmd=interaction.commandName;
-
-if(cmd==="help"){
-
-return interaction.editReply({
+interaction.reply({
 embeds:[
 new EmbedBuilder()
 .setTitle("✨ Divine Trust Bot")
-.setDescription("Available commands")
+.setDescription("Available Commands")
 .addFields(
-{name:"/vouch user message",value:"Give vouch after trade"},
-{name:"/report user reason",value:"Report scammer"},
-{name:"/fakevouch user",value:"Report fake vouch"},
-{name:"/rep user",value:"Check reputation"},
-{name:"/info user",value:"User profile"},
-{name:"/top",value:"Top trusted users"},
-{name:"/topreports",value:"Most reported users"},
-{name:"/setlog",value:"Set log channels"}
+
+{name:"🤝 /vouch user message",value:"Give a vouch after a successful trade."},
+{name:"🚨 /report user reason",value:"Report a scammer with a reason."},
+{name:"⚠ /fakevouch user",value:"Report fake vouch activity."},
+{name:"👤 /info user",value:"View user trust profile."},
+{name:"📊 /rep user",value:"Check user's total vouches."},
+{name:"🏆 /top",value:"Show most trusted users."},
+{name:"📉 /topreports",value:"Show most reported users."},
+{name:"⚙ /setlog",value:"Set log channels."}
+
 )
+.setThumbnail(client.user.displayAvatarURL())
 .setColor(0x5865F2)
 ]
 });
 
 }
 
-if(cmd==="setlog"){
-
-const type=interaction.options.getString("type");
-const channel=interaction.options.getChannel("channel");
-
-return interaction.editReply(`Log channel set to ${channel}`);
-
-}
-
 const user=interaction.options.getUser("user");
+if(!user) return;
 
-if(cmd==="vouch"){
+const member=await interaction.guild.members.fetch(user.id);
+getUser(user.id);
+
+if(interaction.commandName==="vouch"){
 
 const message=interaction.options.getString("message");
 
-const data=getUser(user.id);
+if(!isAccountOldEnough(interaction.user))
+return interaction.reply({content:"Account must be 5 days old",ephemeral:true});
+
+if(user.id===interaction.user.id)
+return interaction.reply({content:"You cannot vouch yourself",ephemeral:true});
+
+const already=db.prepare(`
+SELECT * FROM vouchers
+WHERE fromUser=? AND toUser=?
+`).get(interaction.user.id,user.id);
+
+if(already)
+return interaction.reply({content:"You already vouched this user",ephemeral:true});
 
 db.prepare(`UPDATE users SET vouches=vouches+1 WHERE userId=?`)
 .run(user.id);
 
-return interaction.editReply({
+db.prepare(`INSERT INTO vouchers VALUES (?,?,?)`)
+.run(interaction.user.id,user.id,message);
+
+const data=getUser(user.id);
+
+interaction.reply({
 embeds:[
 new EmbedBuilder()
 .setTitle("Vouch Added")
 .setDescription(`<@${user.id}> received a vouch`)
 .addFields(
 {name:"Message",value:message},
-{name:"Total Vouches",value:`${data.vouches+1}`}
+{name:"Total Vouches",value:`${data.vouches}`}
 )
+.setThumbnail(user.displayAvatarURL({dynamic:true}))
 .setImage(images.vouch)
 .setFooter({text:DISCLAIMER})
 .setColor("Green")
@@ -222,24 +307,28 @@ new EmbedBuilder()
 
 }
 
-if(cmd==="report"){
+if(interaction.commandName==="report"){
 
 const reason=interaction.options.getString("reason");
-
-const data=getUser(user.id);
 
 db.prepare(`UPDATE users SET reports=reports+1 WHERE userId=?`)
 .run(user.id);
 
-return interaction.editReply({
+db.prepare(`INSERT INTO reports VALUES (?,?,?)`)
+.run(interaction.user.id,user.id,reason);
+
+const data=getUser(user.id);
+
+interaction.reply({
 embeds:[
 new EmbedBuilder()
 .setTitle("User Reported")
 .setDescription(`<@${user.id}> reported`)
 .addFields(
 {name:"Reason",value:reason},
-{name:"Reports",value:`${data.reports+1}`}
+{name:"Reports",value:`${data.reports}`}
 )
+.setThumbnail(user.displayAvatarURL({dynamic:true}))
 .setImage(images.report)
 .setFooter({text:DISCLAIMER})
 .setColor("Red")
@@ -248,113 +337,39 @@ new EmbedBuilder()
 
 }
 
-if(cmd==="fakevouch"){
+if(interaction.commandName==="info"){
 
 const data=getUser(user.id);
+const trust=calculateTrust(user,member,data);
 
-db.prepare(`UPDATE users SET fakeReports=fakeReports+1 WHERE userId=?`)
-.run(user.id);
+let risk="🔴 High Risk";
+if(trust>=80) risk="🟢 Low Risk";
+else if(trust>=50) risk="🟡 Medium Risk";
 
-return interaction.editReply({
-embeds:[
-new EmbedBuilder()
-.setTitle("Fake Vouch Report")
-.setDescription(`<@${user.id}> reported`)
-.addFields(
-{name:"Fake Reports",value:`${data.fakeReports+1}`}
-)
-.setColor("Orange")
-]
-});
+if(data.reports>=50 && data.vouches<50)
+risk="🚨 Potential Scammer";
 
-}
+const created=`<t:${Math.floor(user.createdTimestamp/1000)}:R>`;
+const joined=`<t:${Math.floor(member.joinedTimestamp/1000)}:R>`;
 
-if(cmd==="rep"){
-
-const data=getUser(user.id);
-
-return interaction.editReply({
-embeds:[
-new EmbedBuilder()
-.setTitle("User Reputation")
-.setDescription(`<@${user.id}>`)
-.addFields(
-{name:"Total Vouches",value:`${data.vouches}`}
-)
-.setImage(images.rep)
-.setColor("Blue")
-]
-});
-
-}
-
-if(cmd==="info"){
-
-const data=getUser(user.id);
-
-return interaction.editReply({
+interaction.reply({
 embeds:[
 new EmbedBuilder()
 .setTitle(`${user.username}'s Profile`)
-.setThumbnail(user.displayAvatarURL())
+.setThumbnail(user.displayAvatarURL({dynamic:true}))
+.setDescription(`<@${user.id}>`)
 .addFields(
+{name:"Account Created",value:created,inline:true},
+{name:"Joined Server",value:joined,inline:true},
 {name:"Vouches",value:`${data.vouches}`,inline:true},
 {name:"Reports",value:`${data.reports}`,inline:true},
-{name:"Fake Reports",value:`${data.fakeReports}`,inline:true}
+{name:"Fake Vouch Reports",value:`${data.fakeReports}`,inline:true},
+{name:"Trust Score",value:`${trust}%`,inline:true},
+{name:"Risk Level",value:risk,inline:true}
 )
 .setImage(images.info)
-.setColor(0x3498db)
 .setFooter({text:DISCLAIMER})
-]
-});
-
-}
-
-if(cmd==="top"){
-
-const users=db.prepare(`
-SELECT userId,vouches FROM users
-ORDER BY vouches DESC
-LIMIT 10
-`).all();
-
-let text="";
-
-users.forEach((u,i)=>{
-text+=`${i+1}. <@${u.userId}> — ${u.vouches} vouches\n`;
-});
-
-return interaction.editReply({
-embeds:[
-new EmbedBuilder()
-.setTitle("🏆 Top Trusted Users")
-.setDescription(text)
-.setColor("Gold")
-]
-});
-
-}
-
-if(cmd==="topreports"){
-
-const users=db.prepare(`
-SELECT userId,reports FROM users
-ORDER BY reports DESC
-LIMIT 10
-`).all();
-
-let text="";
-
-users.forEach((u,i)=>{
-text+=`${i+1}. <@${u.userId}> — ${u.reports} reports\n`;
-});
-
-return interaction.editReply({
-embeds:[
-new EmbedBuilder()
-.setTitle("⚠ Most Reported Users")
-.setDescription(text)
-.setColor("Red")
+.setColor(0x3498db)
 ]
 });
 
