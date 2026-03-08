@@ -20,11 +20,11 @@ intents:[GatewayIntentBits.Guilds,GatewayIntentBits.GuildMembers]
 const DISCLAIMER =
 "⚠ This bot does not guarantee trust. Always trade at your own risk.";
 
-const images={
+const images = {
 vouch:"https://media.discordapp.net/attachments/1468414813536518196/1479946564028993687/content.png?ex=69ade324&is=69ac91a4&hm=0080fcd78d34ca9a1623c261bf494f0aff918617b24da88fb694069e3ca98a2a&=&format=webp&quality=lossless&width=1440&height=960",
 report:"https://media.discordapp.net/attachments/1468414813536518196/1479946580084658226/content.png?ex=69ade328&is=69ac91a8&hm=fab0be86a7014cafdb768e58069f9aa874ee2b613d35aca2ef0a8ccb5fee9012&=&format=webp&quality=lossless&width=1440&height=960",
 info:"https://media.discordapp.net/attachments/1468414813536518196/1479946427168718929/content.png?ex=69ade304&is=69ac9184&hm=b7a3318b9a93f00258184ef9c1199fcfb7f4765aeedddacb51e1b6ef31290ca4&=&format=webp&quality=lossless&width=1440&height=960",
-rep:"https://media.discordapp.net/attachments/1468414813536518196/1479946596136259665/content.png?ex=69ade32c&is=69ac91ac&hm=004808584395fb7909404625060268695ead7fcb4df303bd779c9fce9e2b7876&=&format=webp&quality=lossless&width=1440&height=960",
+rep:"https://media.discordapp.net/attachments/1468414813536518196/1479946596136259665/content.png?ex=69ade32c&is=69ac91ac&hm=004808584395fb7909404625060268695ead7fcb4df303bd779c9fce9e2b7876&=&format=webp&quality=lossless&width=1440&height=960"
 };
 
 db.prepare(`
@@ -47,7 +47,8 @@ message TEXT
 db.prepare(`
 CREATE TABLE IF NOT EXISTS reports (
 fromUser TEXT,
-toUser TEXT
+toUser TEXT,
+reason TEXT
 )
 `).run();
 
@@ -112,13 +113,8 @@ else if(joinDays>30) score+=20;
 else if(joinDays>7) score+=10;
 else score+=5;
 
-if(data.vouches>20) score+=30;
-else if(data.vouches>10) score+=20;
-else if(data.vouches>5) score+=10;
-else score+=5;
-
-score-=data.reports*10;
-score-=data.fakeReports*15;
+score -= data.reports*10;
+score -= data.fakeReports*15;
 
 if(score<0) score=0;
 if(score>100) score=100;
@@ -150,6 +146,11 @@ new SlashCommandBuilder()
 o.setName("user")
 .setDescription("User")
 .setRequired(true)
+)
+.addStringOption(o=>
+o.setName("reason")
+.setDescription("Reason")
+.setRequired(true)
 ),
 
 new SlashCommandBuilder()
@@ -162,8 +163,8 @@ o.setName("user")
 ),
 
 new SlashCommandBuilder()
-.setName("rep")
-.setDescription("Check reputation")
+.setName("info")
+.setDescription("User info")
 .addUserOption(o=>
 o.setName("user")
 .setDescription("User")
@@ -171,8 +172,8 @@ o.setName("user")
 ),
 
 new SlashCommandBuilder()
-.setName("info")
-.setDescription("User info")
+.setName("rep")
+.setDescription("Check reputation")
 .addUserOption(o=>
 o.setName("user")
 .setDescription("User")
@@ -234,7 +235,7 @@ const channel=interaction.options.getChannel("channel");
 db.prepare(`INSERT OR REPLACE INTO logs VALUES (?,?)`)
 .run(type,channel.id);
 
-return interaction.reply(`Log channel set: ${channel}`);
+return interaction.reply(`Log channel set to ${channel}`);
 
 }
 
@@ -295,13 +296,13 @@ getUser(user.id);
 
 if(interaction.commandName==="vouch"){
 
+const message=interaction.options.getString("message");
+
 if(!isAccountOldEnough(interaction.user))
 return interaction.reply({content:"Account must be 5 days old",ephemeral:true});
 
 if(user.id===interaction.user.id)
 return interaction.reply({content:"You cannot vouch yourself",ephemeral:true});
-
-const message=interaction.options.getString("message");
 
 const already=db.prepare(`
 SELECT * FROM vouchers
@@ -314,9 +315,8 @@ return interaction.reply({content:"You already vouched this user",ephemeral:true
 db.prepare(`UPDATE users SET vouches=vouches+1 WHERE userId=?`)
 .run(user.id);
 
-db.prepare(`
-INSERT INTO vouchers VALUES (?,?,?)
-`).run(interaction.user.id,user.id,message);
+db.prepare(`INSERT INTO vouchers VALUES (?,?,?)`)
+.run(interaction.user.id,user.id,message);
 
 const data=getUser(user.id);
 
@@ -329,10 +329,85 @@ new EmbedBuilder()
 {name:"Message",value:message},
 {name:"Total Vouches",value:`${data.vouches}`}
 )
+.setThumbnail(user.displayAvatarURL({dynamic:true}))
+.setImage(images.vouch)
 .setFooter({text:DISCLAIMER})
 .setColor("Green")
 ]
 });
+
+const log=getLogChannel("vouch",interaction.guild);
+
+if(log){
+
+log.send({
+embeds:[
+new EmbedBuilder()
+.setTitle("Vouch Log")
+.addFields(
+{name:"User",value:`<@${interaction.user.id}>`,inline:true},
+{name:"Target",value:`<@${user.id}>`,inline:true},
+{name:"Message",value:message}
+)
+.setTimestamp()
+.setColor("Green")
+]
+});
+
+}
+
+}
+
+if(interaction.commandName==="report"){
+
+const reason=interaction.options.getString("reason");
+
+if(!isAccountOldEnough(interaction.user))
+return interaction.reply({content:"Account must be 5 days old",ephemeral:true});
+
+db.prepare(`UPDATE users SET reports=reports+1 WHERE userId=?`)
+.run(user.id);
+
+db.prepare(`INSERT INTO reports VALUES (?,?,?)`)
+.run(interaction.user.id,user.id,reason);
+
+const data=getUser(user.id);
+
+interaction.reply({
+embeds:[
+new EmbedBuilder()
+.setTitle("User Reported")
+.setDescription(`<@${user.id}> reported`)
+.addFields(
+{name:"Reason",value:reason},
+{name:"Reports",value:`${data.reports}`}
+)
+.setThumbnail(user.displayAvatarURL({dynamic:true}))
+.setImage(images.report)
+.setFooter({text:DISCLAIMER})
+.setColor("Red")
+]
+});
+
+const log=getLogChannel("report",interaction.guild);
+
+if(log){
+
+log.send({
+embeds:[
+new EmbedBuilder()
+.setTitle("Report Log")
+.addFields(
+{name:"Reporter",value:`<@${interaction.user.id}>`,inline:true},
+{name:"Target",value:`<@${user.id}>`,inline:true},
+{name:"Reason",value:reason}
+)
+.setTimestamp()
+.setColor("Red")
+]
+});
+
+}
 
 }
 
@@ -348,49 +423,25 @@ else if(trust>=50) risk="🟡 Medium Risk";
 if(data.reports>=50 && data.vouches<50)
 risk="🚨 Potential Scammer";
 
-const recentVouches=db.prepare(`
-SELECT fromUser,message
-FROM vouchers
-WHERE toUser=?
-ORDER BY rowid DESC
-LIMIT 10
-`).all(user.id);
-
-const recentReports=db.prepare(`
-SELECT fromUser
-FROM reports
-WHERE toUser=?
-ORDER BY rowid DESC
-LIMIT 10
-`).all(user.id);
-
-const recentFake=db.prepare(`
-SELECT fromUser
-FROM fakeReports
-WHERE toUser=?
-ORDER BY rowid DESC
-LIMIT 10
-`).all(user.id);
-
-const vouchText=recentVouches.map(v=>`<@${v.fromUser}>: ${v.message}`).join("\n") || "None";
-const reportText=recentReports.map(r=>`<@${r.fromUser}> reported`).join("\n") || "None";
-const fakeText=recentFake.map(r=>`<@${r.fromUser}> reported`).join("\n") || "None";
+const created=`<t:${Math.floor(user.createdTimestamp/1000)}:R>`;
+const joined=`<t:${Math.floor(member.joinedTimestamp/1000)}:R>`;
 
 interaction.reply({
 embeds:[
 new EmbedBuilder()
-.setTitle("User Info")
+.setTitle(`${user.username}'s Profile`)
+.setThumbnail(user.displayAvatarURL({dynamic:true}))
 .setDescription(`<@${user.id}>`)
 .addFields(
+{name:"Account Created",value:created,inline:true},
+{name:"Joined Server",value:joined,inline:true},
 {name:"Vouches",value:`${data.vouches}`,inline:true},
 {name:"Reports",value:`${data.reports}`,inline:true},
 {name:"Fake Vouch Reports",value:`${data.fakeReports}`,inline:true},
 {name:"Trust Score",value:`${trust}%`,inline:true},
-{name:"Risk Level",value:risk,inline:true},
-{name:"Recent Vouches",value:vouchText},
-{name:"Recent Reports",value:reportText},
-{name:"Recent Fake Vouch Reports",value:fakeText}
+{name:"Risk Level",value:risk,inline:true}
 )
+.setImage(images.info)
 .setFooter({text:DISCLAIMER})
 .setColor(0x3498db)
 ]
@@ -400,5 +451,4 @@ new EmbedBuilder()
 
 });
 
-client.login(process.env.TOKEN);
-
+client.login(process.env.TOKEN);  
